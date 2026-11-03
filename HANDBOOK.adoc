@@ -32,7 +32,7 @@ pysanoid was written with three goals in mind:
   plausible path to destroying a snapshot that the configuration means to keep. A configuration that sanoid would
   load and then act on wrongly is refused instead.
 * *One file, any system with ZFS:* pysanoid is a single file that needs Python 3.11 or later and nothing outside its
-  standard library. It runs on the author's own system, where packages cannot be installed, and is written to run on
+  standard library. It runs on the my own system, where packages cannot be installed, and is written to run on
   any other system with OpenZFS.
 
 The terms this handbook uses, such as <<term-type,snapshot type>> and <<term-retention-count,retention count>>, are
@@ -43,7 +43,7 @@ toc::[]
 [preface]
 == Why a Port
 
-pysanoid runs on the author's own system, a TrueNAS appliance, and the appliance doesn't fit the author's needs:
+pysanoid runs on my own system, a TrueNAS appliance, and the appliance doesn't fit the my needs:
 
 * *Its snapshot policy stays behind.* A Periodic Snapshot Task's schedule, naming and lifetime live in the
   appliance's configuration database, not on the pool. Import the pool elsewhere, and nothing there knows how to keep
@@ -173,7 +173,7 @@ To install the units and start the timer:
 # systemctl enable --now pysanoid.timer
 ----
 
-Both services name `pysanoid-alert@.service` as their failure handler. That handler works only on the author's own
+Both services name `pysanoid-alert@.service` as their failure handler. That handler works only on the my own
 system (see <<own-system-alert>>). On any other system, remove the `OnFailure=` line from both services, or point it at
 a handler of the system's own.
 
@@ -422,14 +422,14 @@ could not be written, does not stop the run, but the run exits 1 at the end. A c
 wrong is written to standard error, so a failed run shows as a failed unit in systemd.
 
 [[own-system]]
-== pysanoid on the Author's Own System
+== pysanoid on the my Own System
 
-The author's own system has run pysanoid since August 2026. There, pysanoid has to live on a pool, can mail its
+My system has run pysanoid since August 2026. There, pysanoid has to live on a pool, can mail its
 failures through the system's own mail settings, and has to be kept clear of the system's own snapshot tasks.
 
 === Keeping pysanoid on a Pool
 
-An update of the author's own system replaces the system's files, and with them anything installed alongside them.
+An update of the my system replaces the system's files, and with them anything installed alongside them.
 Keep `pysanoid.py`, `pysanoid_alert.py`, `sanoid.conf` and `sanoid.defaults.conf` together in a directory on a pool
 instead, and edit all three services to use it. In `pysanoid.service`, and likewise in `pysanoid-prune.service` with
 `--prune-snapshots`:
@@ -454,8 +454,8 @@ Reinstall the units after each update.
 
 `pysanoid-alert@.service` runs `pysanoid_alert.py`, which mails a failed run's log through the system's own mail
 settings. No address or password is stored with it. Run from a Cron Job in the system's web interface, it can also
-check that every configured type has a recent snapshot. It needs the system's own mail service, so it works only on
-the author's own system.
+check that every configured type has a recent snapshot. It needs the TrueNAS own mail service, so it works only
+on a TrueNAS system.
 
 === The System's Own Snapshot Tasks
 
@@ -511,7 +511,7 @@ Some places had drifted from sanoid by accident. Each was fixed to do what sanoi
 the fix and passes after it. Among them:
 
 * The dataset cache was loaded lazily, where sanoid loads it eagerly. This was the bug with the most effect, since it
-  was live on every run on the author's system.
+  was live on every run on the my system.
 * When the snapshot cache was missing, adding to it built a new cache of the new snapshots alone. Every other type
   then looked overdue, was taken again, and the extra snapshots used up retention.
 * How a recursive section and a template were merged depended on the order of the sections, so a child's own
@@ -583,7 +583,7 @@ pysanoid is tested in two ways:
 
 The tests and the comparison with sanoid run on macOS under Python 3.11 and 3.14, and GitHub Actions runs the tests
 on Linux under both versions for every push. pysanoid is written to run on FreeBSD and on Linux distributions other
-than the author's own, but has not yet been run on a real pool there.
+than the my own, but has not yet been run on a real pool there.
 
 [[files]]
 == Files
@@ -596,7 +596,7 @@ than the author's own, but has not yet been run on a real pool there.
 | `sanoid.defaults.conf` | sanoid's defaults, as sanoid ships them (comments aside)
 | `sanoid.conf` | an example configuration
 | `pysanoid.service`, `pysanoid-prune.service`, `pysanoid.timer` | systemd units, after sanoid's Debian packaging
-| `pysanoid_alert.py`, `pysanoid-alert@.service` | failure mail and a freshness check, for the author's own system
+| `pysanoid_alert.py`, `pysanoid-alert@.service` | failure mail and a freshness check, for the my own system
 | `HANDBOOK.adoc` | this handbook
 | `DEVIATIONS.md` | every difference from sanoid, and why
 | `AUDIT.md` | how the port was checked
