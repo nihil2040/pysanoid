@@ -32,8 +32,8 @@ pysanoid was written with three goals in mind:
   plausible path to destroying a snapshot that the configuration means to keep. A configuration that sanoid would
   load and then act on wrongly is refused instead.
 * *One file, any system with ZFS:* pysanoid is a single file that needs Python 3.11 or later and nothing outside its
-  standard library. It runs on the my own system, where packages cannot be installed, and is written to run on
-  any other system with OpenZFS.
+  standard library. Today it runs on my TrueNAS system, where packages cannot be installed, and can plausibly be
+run on any system with OpenZFS and python installed.
 
 The terms this handbook uses, such as <<term-type,snapshot type>> and <<term-retention-count,retention count>>, are
 described in <<terminology>>.
@@ -43,14 +43,14 @@ toc::[]
 [preface]
 == Why a Port
 
-pysanoid runs on my own system, a TrueNAS appliance, and the appliance doesn't fit the my needs:
+Today pysanoid runs on a TrueNAS appliance, and the appliance doesn't fit the my needs:
 
 * *Its snapshot policy stays behind.* A Periodic Snapshot Task's schedule, naming and lifetime live in the
   appliance's configuration database, not on the pool. Import the pool elsewhere, and nothing there knows how to keep
   its snapshots.
-* *It can't manage sanoid's snapshots.* Its tasks keep snapshots by age, not by a count of each type, and only those
-  whose names match a task's schema. Bent to fit years of existing sanoid snapshots, they pruned unpredictably or not
-  at all.
+* *It can't manage existing sanoid snapshots from an imported pool.* Its tasks keep snapshots by age, not by a count
+  of each type, and only those whose names match a task's schema. Bent to fit years of existing sanoid snapshots,
+  they pruned unpredictably or not at all.
 * *sanoid can't be installed on it.* sanoid is Perl and needs CPAN modules. The appliance doesn't support installing
   packages, and each update replaces the system's files.
 
