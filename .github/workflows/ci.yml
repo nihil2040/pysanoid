@@ -1,0 +1,27 @@
+# Runs pysanoid's tests and ruff on every push and pull request, on the oldest Python pysanoid supports and the
+# newest. The comparison with sanoid's Perl (dev/run.py) is left to a local run; see CONTRIBUTING.md.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install pytest==9.2.0 ruff==0.17.3
+      - run: ruff check .
+      - run: python -m pytest test_pysanoid.py test_pysanoid_alert.py
