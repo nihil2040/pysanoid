@@ -1,0 +1,4 @@
+# pysanoid supports Python 3.11 and later, so 3.11 is the version to lint for. With no target, ruff
+# assumes an older Python and skips what it reports only for 3.11 and later; with a newer one, it asks
+# for what 3.11 doesn't have. The rules are ruff's defaults.
+target-version = "py311"

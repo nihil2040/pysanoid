@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Fake `zfs` over a pool that changes, for dev/diff_whole_run.py: a snapshot made is listed from then on, a
+snapshot destroyed is gone. $FAKE_POOL names a JSON file, {"datasets": [...], "snaps": [[dataset@name, creation],
+...], "cap": {pool: "NN%"}}, rewritten by every snapshot and destroy; every argv is logged as a JSON line to
+$FAKE_POOL.log. A new snapshot's creation is $FAKE_NOW, the run's frozen clock. Each call holds an flock on
+$FAKE_POOL.lock while it reads and writes the pool, so two runs at once don't lose each other's changes (as zfs's own
+are atomic), and with $FAKE_POOL_DELAY it takes that many seconds first, so two runs' steps interleave. A listing
+(`zfs get`) reads the pool, lets go of it, and takes $FAKE_POOL_GET_DELAY more before it answers, as a slow listing
+of a big pool does: what it lists is the pool as it began, and may have changed by the time it ends.
+
+  zfs get -Hrpt snapshot creation [dataset ...]   each name must exist (one that doesn't complains on stderr and
+      makes the exit status 1, as zfs does); its snapshots and its descendants' are listed once, in the order made
+  zfs list -o name -t filesystem,volume -Hr <fs>   fs, then its descendants
+  zfs snapshot [-r] <dataset@name>                 refused, with zfs's complaint, if any target already has the name
+  zfs destroy <dataset@name>                       refused if there is no such snapshot
+Anything else exits 2.
+"""
+import fcntl
+import json
+import os
+import sys
+import time
+
+path = os.environ["FAKE_POOL"]
+time.sleep(float(os.environ.get("FAKE_POOL_DELAY") or 0))
+_lock = open(path + ".lock", "a")  # noqa: SIM115 - held until the process ends
+fcntl.flock(_lock, fcntl.LOCK_EX)
+with open(path) as fh:
+    state = json.load(fh)
+argv = sys.argv[1:]
+with open(path + ".log", "a") as fh:
+    fh.write(json.dumps(argv) + "\n")
+datasets, snaps = state["datasets"], state["snaps"]
+
+
+def under(dataset, name):
+    return dataset == name or dataset.startswith(name + "/")
+
+
+def save():
+    with open(path + ".tmp", "w") as fh:
+        json.dump(state, fh)
+    os.replace(path + ".tmp", path)
+
+
+if argv[:1] == ["get"]:
+    names, rc, seen, out = argv[4:], 0, set(), []
+    for name in names:
+        if name not in datasets:
+            sys.stderr.write(f"cannot open '{name}': dataset does not exist\n")
+            rc = 1
+    for snap in snaps:
+        if snap[0] not in seen and (not names or any(under(snap[0].split("@")[0], n) for n in names if n in datasets)):
+            seen.add(snap[0])
+            out.append(snap)
+    fcntl.flock(_lock, fcntl.LOCK_UN)
+    time.sleep(float(os.environ.get("FAKE_POOL_GET_DELAY") or 0))
+    sys.stdout.write("".join(f"{s[0]}\tcreation\t{s[1]}\t-\n" for s in out))
+    sys.exit(rc)
+if argv[:1] == ["list"]:
+    fs = argv[-1]
+    if fs not in datasets:
+        sys.stderr.write(f"cannot open '{fs}': dataset does not exist\n")
+        sys.exit(1)
+    sys.stdout.write("".join(f"{d}\n" for d in sorted(d for d in datasets if under(d, fs))))
+    sys.exit(0)
+if argv[:1] == ["snapshot"]:
+    full = argv[-1]
+    dataset, name = full.split("@", 1)
+    if dataset not in datasets:
+        sys.stderr.write(f"cannot open '{dataset}': dataset does not exist\n")
+        sys.exit(1)
+    targets = sorted(d for d in datasets if under(d, dataset)) if "-r" in argv else [dataset]
+    have = {s[0] for s in snaps}
+    if any(f"{t}@{name}" in have for t in targets):
+        sys.stderr.write(f"cannot create snapshot '{full}': dataset already exists\n")
+        sys.exit(1)
+    snaps += [[f"{t}@{name}", int(os.environ["FAKE_NOW"])] for t in targets]
+    save()
+    sys.exit(0)
+if argv[:1] == ["destroy"]:
+    full = argv[-1]
+    if full not in {s[0] for s in snaps}:
+        sys.stderr.write("could not find any snapshots to destroy; check snapshot names.\n")
+        sys.exit(1)
+    state["snaps"] = [s for s in snaps if s[0] != full]
+    save()
+    sys.exit(0)
+sys.stderr.write(f"fake zfs: unhandled {argv}\n")
+sys.exit(2)

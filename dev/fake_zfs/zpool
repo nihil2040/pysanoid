@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+"""Fake `zpool` for differential testing (dev/diff_zpool_capacity.py): answers any `zpool` command with what the JSON
+file at $FAKE_ZPOOL says, byte for byte: {"stdout": "<hex>", "stderr": "<hex>", "rc": int, "kill": signal number}.
+stderr is written first, then stdout; then it exits with "rc" (default 0), or dies from "kill". Without $FAKE_ZPOOL
+it exits 2 having said so, as dev/fake_zfs/zfs does for a subcommand it doesn't model."""
+import json
+import os
+import sys
+
+if "FAKE_ZPOOL" not in os.environ:
+    sys.stderr.write("fake zpool: $FAKE_ZPOOL is not set\n")
+    sys.exit(2)
+with open(os.environ["FAKE_ZPOOL"]) as f:
+    st = json.load(f)
+os.write(2, bytes.fromhex(st.get("stderr", "")))
+os.write(1, bytes.fromhex(st.get("stdout", "")))
+if st.get("kill"):
+    os.kill(os.getpid(), st["kill"])
+sys.exit(st.get("rc", 0))

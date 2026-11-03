@@ -1,0 +1,772 @@
+= The pysanoid Handbook
+:toc: macro
+:toclevels: 2
+:sectnums:
+:sectnumlevels: 3
+:sectanchors:
+:idprefix:
+:idseparator: -
+:experimental:
+:openzfs-man: https://openzfs.github.io/openzfs-docs/man/master
+:systemd-man: https://www.freedesktop.org/software/systemd/man/latest
+:sanoid: https://github.com/jimsalterjrs/sanoid
+:sanoid-pin: https://github.com/jimsalterjrs/sanoid/tree/d39b51a013081e86bb26a6859866c34d98c39ea3
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+
+pysanoid takes and prunes ZFS snapshots by policy. It is a Python port of link:{sanoid}[sanoid], the snapshot tool
+Jim Salter wrote and maintains with its contributors. It reads sanoid's own configuration files, names its snapshots
+as sanoid does, and decides what to take and what to destroy as sanoid does.
+
+pysanoid was written with three goals in mind:
+
+* *sanoid's files and names, unchanged:* an existing `sanoid.conf` loads as it is, and snapshots are named
+  `autosnap_YYYY-MM-DD_HH:MM:SS_<type>`, as sanoid names them. A pool can move between pysanoid and Perl sanoid at
+  any time.
+* *Never destroy what the configuration keeps:* pysanoid follows sanoid one for one, except where following it has a
+  plausible path to destroying a snapshot that the configuration means to keep. A configuration that sanoid would
+  load and then act on wrongly is refused instead.
+* *One file, any system with ZFS:* pysanoid is a single file that needs Python 3.11 or later and nothing outside its
+  standard library. It runs on TrueNAS, where packages cannot be installed, and on any other system with OpenZFS.
+
+The terms this handbook uses, such as <<term-type,snapshot type>> and <<term-retention-count,retention count>>, are
+described in <<terminology>>.
+
+toc::[]
+
+[preface]
+== Why a Port
+
+My pools have outlived the systems they ran on, and I expect them to keep doing so. They run on TrueNAS today, and
+TrueNAS has proven to be a stable NAS OS, but I want to be able to import them on Debian or RHEL and have their
+snapshots taken and pruned exactly as before. That means the snapshot policy has to travel with me, not stay behind
+in one system's configuration.
+
+=== Why Not TrueNAS's Own Snapshot Tasks
+
+TrueNAS takes and prunes snapshots with zettarepl, its own engine, driven by the Periodic Snapshot Tasks in its web
+interface. That works for snapshots TrueNAS made itself. It didn't work for mine:
+
+* *The policy doesn't travel with the pool.* A task's schedule, naming schema and lifetime live in TrueNAS's
+  configuration database, not on the pool. Import the pool somewhere else and the snapshots come along, but nothing
+  there knows how to keep them.
+* *It couldn't manage the snapshots I already had.* I came to TrueNAS with years of sanoid snapshots
+  (`autosnap_..._daily`, `autosnap_..._monthly` and so on) from another system. zettarepl manages only the snapshots
+  whose names parse under an enabled task's naming schema, and it keeps them by age (a lifetime per task), not by a
+  count of each type. I tried to bend the tasks to fit sanoid's names and retention. The snapshots began pruning in
+  ways I couldn't predict, or not at all, and I ended up pruning them by hand.
+
+=== Why sanoid, and Why a Port of It
+
+sanoid's model is the one I want. The policy is a text file that goes wherever I copy it. Retention is a count of
+each type. And a snapshot's name carries everything needed to decide whether to keep it, so the same file prunes the
+same snapshots on any system.
+
+sanoid itself is Perl and needs CPAN modules. TrueNAS doesn't support installing packages on the system, and an
+update replaces the system's files anyway. So I wanted a sanoid I could carry to any system with ZFS: a single file
+that needs nothing but Python and its standard library, with no Perl modules to install and no packages to keep in
+step with the system. It runs on TrueNAS 25.10.x today, and it is meant to run wherever else I decide to put it.
+Because it keeps sanoid's configuration and names, a pool can also go back to Perl sanoid at any time.
+
+=== Why No syncoid
+
+I don't need replication from the port. On TrueNAS, a Replication Task already sends snapshots. It can send
+sanoid-named ones too: give it one schema for each type under "Also include naming schema", such as
+`autosnap_%Y-%m-%d_%H:%M:%S_daily`. Porting syncoid would only duplicate that. On a system without TrueNAS, upstream
+syncoid works with pysanoid's snapshots as it does with sanoid's, since the names are the same.
+
+[[quick-start]]
+== Quick Start Guide
+
+This section installs pysanoid, shows what a first run would do without changing anything, and then starts it on an
+hourly schedule. The examples use a pool named `tank`, the name the ZFS manual pages use in their own examples.
+
+=== Requirements
+
+* Python 3.11 or later. pysanoid uses nothing outside the standard library.
+* A POSIX system with OpenZFS, with `zfs` and `zpool` on `PATH`. pysanoid locks its files with link:https://man7.org/linux/man-pages/man2/flock.2.html[flock(2)], so it
+  does not run on Windows.
+* The system's time zone database, `/usr/share/zoneinfo`, which sanoid's Perl reads through the C library.
+* systemd, to run it on a schedule. Any other scheduler that can run a command every hour works as well.
+
+=== Installing
+
+pysanoid is one program and two configuration files. To install them, run these commands as `root` from a copy of the
+repository:
+
+[source,shell]
+----
+# install -m 755 pysanoid.py /usr/local/sbin/pysanoid.py
+# mkdir -p /etc/sanoid
+# install -m 644 sanoid.defaults.conf /etc/sanoid/
+# install -m 644 sanoid.conf /etc/sanoid/
+----
+
+`sanoid.defaults.conf` holds the default of every setting and is never edited. `sanoid.conf` is the example
+configuration from the repository. Edit it to name the datasets of the system's own pools, as described in
+<<configuration>>.
+
+[WARNING]
+====
+Do not run pysanoid and Perl sanoid on the same system. They use the same cache and run directories, and neither can
+see the other's locks.
+====
+
+[[first-run]]
+=== A First Run
+
+The `--readonly` option shows what a run would take and destroy, and changes nothing. Use it before the first real
+run, and after every change to the configuration. This configuration keeps seven daily snapshots of `tank/home`, of
+every dataset under it, and of `tank/backup`:
+
+[source,ini]
+----
+[tank/home]
+	use_template = home
+	recursive = yes
+
+[tank/backup]
+	use_template = home
+	prune_defer = 85
+
+[template_home]
+	hourly = 0
+	daily = 7
+	weekly = 0
+	monthly = 0
+	autosnap = yes
+	autoprune = yes
+----
+
+Shortly after midnight UTC, with nine dailies of each dataset already in place, a read-only run shows:
+
+[source,shell]
+----
+# pysanoid.py --cron --readonly --verbose
+INFO: dataset cache expired - updating from zfs list.
+INFO: cache expired - updating from zfs list.
+INFO: taking snapshots...
+taking snapshot tank/home@autosnap_2026-11-03_00:01:12_daily
+taking snapshot tank/home/alice@autosnap_2026-11-03_00:01:12_daily
+taking snapshot tank/backup@autosnap_2026-11-03_00:01:12_daily
+INFO: pruning snapshots...
+INFO: pruning tank/home@autosnap_2026-10-25_00:00:07_daily ...
+INFO: pruning tank/home@autosnap_2026-10-26_00:00:07_daily ...
+INFO: pruning tank/home/alice@autosnap_2026-10-25_00:00:07_daily ...
+INFO: pruning tank/home/alice@autosnap_2026-10-26_00:00:07_daily ...
+INFO: deferring snapshot pruning (tank/backup)...
+----
+
+The run would take a daily of each dataset, since the day's <<term-preferred-time,preferred time>> of 23:59 has
+passed since the last one. `tank/home/alice` is included because `recursive = yes` gives `tank/home`'s settings to
+every dataset under it. The run would also destroy the two oldest dailies of `tank/home` and of `tank/home/alice`,
+which are more than seven days old and have at least seven newer ones. `tank/backup` keeps all of its snapshots
+because the pool is less than 85% full (see <<prune-defer>>).
+
+A read-only run takes nothing, so its pruning counts only the snapshots that already exist. A real run counts the one
+it has just taken as well, and may destroy one more.
+
+=== Running on a Schedule
+
+The repository has three systemd units, based on sanoid's own Debian packaging:
+
+* `pysanoid.service` takes the snapshots that are due, and then starts `pysanoid-prune.service`.
+* `pysanoid-prune.service` destroys the snapshots past their retention.
+* `pysanoid.timer` starts `pysanoid.service` every hour, up to two minutes after the hour.
+
+To install the units and start the timer:
+
+[source,shell]
+----
+# install -m 644 pysanoid.service pysanoid-prune.service pysanoid.timer /etc/systemd/system/
+# systemctl daemon-reload
+# systemctl enable --now pysanoid.timer
+----
+
+Both services name `pysanoid-alert@.service` as their failure handler. That handler works only on TrueNAS (see
+<<truenas-alert>>). On any other system, remove the `OnFailure=` line from both services, or point it at a handler of
+the system's own.
+
+Both services also set `TZ=UTC`, as sanoid's Debian units do. Snapshots are then named in UTC, and preferred times
+such as `daily_hour` are read in UTC. To name snapshots in local time, set `TZ` to the system's zone in both units.
+
+=== Watching It
+
+These commands show when the timer last ran and runs next, what each run did, and which snapshots exist:
+
+[source,shell]
+----
+# systemctl list-timers pysanoid.timer
+# journalctl -u pysanoid.service -u pysanoid-prune.service
+# zfs list -t snapshot -r tank
+----
+
+See link:{systemd-man}/systemd.timer.html[systemd.timer(5)] and link:{openzfs-man}/8/zfs-list.8.html[zfs-list(8)]
+for their other options.
+
+[[configuration]]
+== Configuration
+
+pysanoid reads `sanoid.conf` and `sanoid.defaults.conf` from `/etc/sanoid`, or from the directory that `--configdir`
+names. Both are sanoid's files in sanoid's format, and an existing sanoid configuration loads unchanged.
+
+=== Sections and Templates
+
+A section is named after a dataset, with no leading slash, and holds the settings for that dataset:
+
+[source,ini]
+----
+[tank/home]
+	use_template = home
+----
+
+A section named `template_<name>` holds settings that other sections share. A section uses it with
+`use_template = <name>`. A section's own settings win over its templates', and its templates' win over the
+defaults. Templates are usually placed below the sections that use them.
+
+To change a default for every section, add a `[template_default]` section to `sanoid.conf`. Do not edit
+`sanoid.defaults.conf`: it is replaced on every upgrade, and pysanoid expects it to match sanoid's own.
+
+[NOTE]
+====
+A setting a template leaves out comes from `sanoid.defaults.conf`, and the defaults keep 48 hourlies, 90 dailies and
+6 monthlies. A template that should keep none of a type has to say so, for example `hourly = 0`.
+====
+
+[[retention]]
+=== Retention Counts
+
+Each <<term-type,snapshot type>> has a <<term-retention-count,retention count>>: `frequently`, `hourly`, `daily`,
+`weekly`, `monthly` and `yearly`. A count keeps that many snapshots of its type, and destroys an older one only once
+it is older than the count's span. With `daily = 7`, pysanoid keeps at least seven dailies, and destroys a daily once
+it is more than seven days old and at least seven newer dailies exist.
+
+A count of `0` takes no snapshots of that type and keeps none. To keep twelve hourlies and seven dailies of
+`tank/media`, add:
+
+[source,ini]
+----
+[tank/media]
+	hourly = 12
+	daily = 7
+	weekly = 0
+	monthly = 0
+	yearly = 0
+----
+
+pysanoid refuses a blank, negative or malformed count instead of pruning by it, where sanoid reads such a count as 0
+or as a different number.
+
+[[preferred-times]]
+=== Preferred Times
+
+Each type is taken at the first run after its <<term-preferred-time,preferred time>>. These defaults apply unless a
+section or template sets its own:
+
+[cols="1,2,1"]
+|===
+| Type | Settings | Default
+
+| hourly
+| `hourly_min`
+| minute 0 of each hour
+
+| daily
+| `daily_hour`, `daily_min`
+| 23:59
+
+| weekly
+| `weekly_wday`, `weekly_hour`, `weekly_min`
+| Monday, 23:30
+
+| monthly
+| `monthly_mday`, `monthly_hour`, `monthly_min`
+| the 1st, 00:00
+
+| yearly
+| `yearly_mon`, `yearly_mday`, `yearly_hour`, `yearly_min`
+| 1 January, 00:00
+|===
+
+A frequent snapshot is taken every `frequent_period` minutes, 15 by default. Preferred times are read in the time
+zone of `TZ`, which the systemd units set to UTC.
+
+pysanoid computes preferred times with the system's time zone database, so a change to or from summer time neither
+skips a snapshot nor takes one twice.
+
+[[recursion]]
+=== Recursion
+
+A section's settings normally apply to its own dataset only. `recursive` extends them to the datasets below it:
+
+`recursive = yes`:: Every dataset under the section gets the section's settings, and each is snapshotted on its own.
+A dataset with a section of its own keeps its own settings, as long as its section comes after its parent's.
+`recursive = zfs`:: The whole tree is snapshotted with one `zfs snapshot -r`, so every dataset in it is snapshotted
+at the same instant, and the whole tree is handled by the section's settings.
+
+`process_children_only = yes` skips the section's own dataset and handles only the ones under it. `skip_children = yes`
+leaves out the datasets under a section.
+
+[IMPORTANT]
+====
+Place a dataset's own section below the recursive section above it. sanoid reads sections in order, and a section
+placed above is replaced by its parent's settings, which can destroy snapshots the child section means to keep.
+pysanoid refuses such a configuration and names both sections.
+====
+
+ See link:{openzfs-man}/8/zfs-snapshot.8.html[zfs-snapshot(8)] for how `-r` takes
+a recursive snapshot.
+
+[[prune-defer]]
+=== Deferring Pruning
+
+`prune_defer` keeps a dataset's snapshots until its pool is fuller than the given percentage. This suits a dataset
+whose snapshots should be kept for as long as the pool has room:
+
+[source,ini]
+----
+[tank/backup]
+	use_template = home
+	prune_defer = 85
+----
+
+While `tank` is 85% full or less, a run shows `deferring snapshot pruning (tank/backup)...` and destroys none of
+`tank/backup`'s snapshots. Once the pool is fuller, they are pruned by their counts as usual. pysanoid reads the
+pool's capacity with `zpool list`; see link:{openzfs-man}/8/zpool-list.8.html[zpool-list(8)].
+
+[[hooks]]
+=== Script Hooks
+
+A section can run a command before and after its snapshots are taken, and before and after each one is destroyed.
+Each command runs as Perl's `system()` would run it: through `/bin/sh` if it holds a shell metacharacter, otherwise
+directly, with its words as arguments. `script_timeout` stops a hook that runs too long, 5 seconds by default, and
+counts it as failed.
+
+[cols="2,3,4"]
+|===
+| Setting | When it runs | Variables it gets
+
+| `pre_snapshot_script`
+| before a dataset's snapshots
+| `SANOID_SCRIPT=pre`, `SANOID_TARGET`, `SANOID_TARGETS`, `SANOID_TYPES`, `SANOID_SNAPNAME`, `SANOID_SNAPNAMES`
+
+| `post_snapshot_script`
+| after them, unless the pre hook failed or `force_post_snapshot_script` is set
+| the same, with `SANOID_SCRIPT=post` and `SANOID_PRE_FAILURE` (1 or 0)
+
+| `pre_pruning_script`
+| before each destroy; a non-zero exit keeps that snapshot
+| `SANOID_TARGET`, `SANOID_SNAPNAME`
+
+| `pruning_script`
+| after each destroy
+| `SANOID_TARGET`, `SANOID_SNAPNAME`, `SANOID_SCRIPT=prune`
+|===
+
+`SANOID_TYPES` and `SANOID_SNAPNAMES` are separated by commas. As in sanoid, `SANOID_SNAPNAME` is the bare snapshot
+name for the pre hook and `dataset@name` for the post hook. With `no_inconsistent_snapshot = yes`, a failed
+`pre_snapshot_script` holds that dataset's snapshots back for the run.
+
+[[config-errors]]
+=== Configuration Errors
+
+pysanoid checks the configuration when it loads it, before it takes or destroys anything. A mistake that sanoid would
+load and then act on wrongly stops the run instead, with the setting and the section named. A typo made while turning pruning
+off, for example, leaves pruning on in sanoid. pysanoid refuses it:
+
+[source,shell]
+----
+# pysanoid.py --prune-snapshots --readonly
+FATAL: 'autoprune' in [tank/home] must be one of 0, 1, FALSE, False, NO, No, OFF, ON, Off, On, TRUE, True, YES, Yes, false, no, off, on, true, yes, got 'noo'.
+----
+
+A template that does not exist is refused the same way:
+
+[source,shell]
+----
+# pysanoid.py --cron --readonly
+FATAL: [tank/home] in /etc/sanoid/sanoid.conf uses template 'hom', but there's no [template_hom] section defined.
+----
+
+Both runs exit with status 1, and nothing is taken or destroyed. pysanoid also refuses two sections on one dataset.
+
+[[running]]
+== Running pysanoid
+
+=== Options
+
+[cols="1,3"]
+|===
+| Option | What it does
+
+| `--take-snapshots` | take the snapshots that are due
+| `--prune-snapshots` | destroy the snapshots past their retention
+| `--cron` | take, then prune; a run given no option but the directories does this, verbosely
+| `--readonly` | show what would be taken and destroyed, and change nothing
+| `--verbose` | say what each step does
+| `--quiet` | with `--cron`, turn `--verbose` off
+| `--debug` | print the merged configuration and a summary of each dataset's snapshots; with an action, run it verbosely
+| `--force-update` | read the snapshot list from zfs, not the cache
+| `--cache-ttl=SECONDS` | how long the snapshot cache is used (default 1200)
+| `--configdir=DIR` | where the configuration is (default `/etc/sanoid`)
+| `--cache-dir=DIR` | where the caches are (default `/var/cache/sanoid`)
+| `--run-dir=DIR` | where the lock files are (default `/var/run/sanoid`)
+| `--force-prune` | accepted and ignored, with a warning, as sanoid does
+| `--version` | print pysanoid's version
+|===
+
+To see how pysanoid has merged the configuration's sections, templates and defaults, run:
+
+[source,shell]
+----
+# pysanoid.py --debug
+----
+
+Each setting is listed with where its value came from, followed by every dataset's settings as pysanoid will use them.
+
+=== Exit Status
+
+A run exits 0 when everything went as configured. It exits 1 when something could not be done: a snapshot that could
+not be taken, a cache that could not be written, or a configuration error. A command-line error exits 2. What went
+wrong is written to standard error, so a failed run shows as a failed unit in systemd.
+
+[[truenas]]
+== pysanoid on TrueNAS
+
+TrueNAS has run pysanoid in production since August 2026, on TrueNAS SCALE 25.10.x with Python 3.11. TrueNAS needs
+three things that other systems do not.
+
+=== Keeping pysanoid on a Pool
+
+A TrueNAS update replaces the system's own files, `/usr/local/sbin` and `/etc/systemd/system` among them. Keep
+`pysanoid.py`, `sanoid.conf` and `sanoid.defaults.conf` in a directory on a pool instead, and edit both services to
+use it:
+
+[source,ini]
+----
+ConditionFileNotEmpty=/mnt/tank/bin/pysanoid/sanoid.conf
+ExecStart=/mnt/tank/bin/pysanoid/pysanoid.py --configdir=/mnt/tank/bin/pysanoid --take-snapshots --verbose
+----
+
+Reinstall the units after each TrueNAS update.
+
+[[truenas-alert]]
+=== Mail on Failure
+
+`pysanoid-alert@.service` runs `pysanoid_alert.py`, which mails a failed run's log through TrueNAS's own mail
+settings. No address or password is stored with it. Run from a TrueNAS Cron Job, it can also check that every
+configured type has a recent snapshot. It works only on TrueNAS.
+
+=== TrueNAS's Own Snapshot and Replication Tasks
+
+TrueNAS takes and prunes its own snapshots with zettarepl, driven by Periodic Snapshot Tasks. zettarepl manages every
+snapshot whose name parses under an enabled task's naming schema.
+
+[WARNING]
+====
+Do not leave a Periodic Snapshot Task enabled on a dataset that pysanoid manages if its naming schema could parse
+`autosnap_` names. zettarepl would then prune pysanoid's snapshots by the task's lifetime, alongside pysanoid's own
+retention. A task whose schema matches only its own names, such as TrueNAS's `auto-%Y-%m-%d_%H-%M`, leaves them
+alone.
+====
+
+A Replication Task can send pysanoid's snapshots. Give it one schema for each type under "Also include naming
+schema", such as `autosnap_%Y-%m-%d_%H:%M:%S_daily` and `autosnap_%Y-%m-%d_%H:%M:%S_monthly`.
+
+[[moving-a-pool]]
+== Moving a Pool to Another System
+
+The snapshot policy lives in `sanoid.conf`, and each snapshot's name carries its type and the time it was taken. A
+pool can therefore move to another system and have its snapshots pruned exactly as before, as long as
+`sanoid.conf` moves with it. This section moves `tank` from TrueNAS to Debian or RHEL.
+
+=== On the Old System
+
+Stop the timer first, so that no run starts while the pool is being exported:
+
+[source,shell]
+----
+# systemctl disable --now pysanoid.timer
+----
+
+Copy `sanoid.conf` somewhere off the pool, or note that it is on the pool if it was kept there. On TrueNAS, export the
+pool with menu:Storage[Export/Disconnect] in the web interface, which TrueNAS expects. On any other system, run:
+
+[source,shell]
+----
+# zpool export tank
+----
+
+=== On the New System
+
+Install OpenZFS from the distribution's own packages: `zfsutils-linux` from Debian's `contrib` section, or `zfs` from
+the OpenZFS repository on RHEL. Then list the pools that can be imported, and import `tank`:
+
+[source,shell]
+----
+# zpool import
+# zpool import tank
+----
+
+A pool that was not exported cleanly needs `zpool import -f tank`. See
+link:{openzfs-man}/8/zpool-import.8.html[zpool-import(8)].
+
+[NOTE]
+====
+TrueNAS imports its pools under `/mnt`. On another system, a dataset mounts at its own `mountpoint`, such as
+`/tank/home` rather than `/mnt/tank/home`. `sanoid.conf` names datasets, not paths, so it needs no change, unless a
+section sets `path`.
+====
+
+Next, install pysanoid as in <<quick-start>>, using the old system's `sanoid.conf`. Check the version of Python
+first:
+
+[source,shell]
+----
+# python3 --version
+----
+
+Debian 12 has Python 3.11 and Debian 13 has 3.13, both new enough. RHEL 9's `python3` is 3.9, which is too old.
+Install the `python3.11` package, and run pysanoid with it in both services:
+
+[source,ini]
+----
+ExecStart=/usr/bin/python3.11 /usr/local/sbin/pysanoid.py --take-snapshots --verbose
+----
+
+Remove the `OnFailure=` lines, since the mail handler works only on TrueNAS. Keep `TZ` as it was on the old system,
+so that new snapshots are named and preferred times are read in the same zone as before.
+
+=== The First Run on the New System
+
+Run pysanoid read-only, and check that it would prune only what the old system would have pruned:
+
+[source,shell]
+----
+# pysanoid.py --cron --readonly --verbose
+----
+
+The new system has no cache yet, so this run reads every snapshot from zfs. When the output is as expected, start the
+timer:
+
+[source,shell]
+----
+# systemctl enable --now pysanoid.timer
+----
+
+=== Going Back to Perl sanoid
+
+pysanoid's configuration and snapshot names are sanoid's, so a pool can also be handed back to Perl sanoid. Disable
+`pysanoid.timer`, install sanoid from the distribution's packages, and point it at the same `sanoid.conf`. Before
+doing so, read link:DEVIATIONS.md[DEVIATIONS.md]: it lists every case where sanoid acts on a configuration
+differently, and some of those cases destroy snapshots that pysanoid keeps.
+
+[[differences]]
+== Differences from sanoid
+
+pysanoid follows sanoid at commit link:{sanoid-pin}[`d39b51a`], the v2.3.0 line. The rule is to match sanoid one for
+one, unless matching it has a plausible path to losing snapshots that the configuration means to keep. In short,
+pysanoid:
+
+* refuses a configuration that sanoid would load and then act on wrongly: a template that does not exist, a typo in
+  an on/off setting, two sections on one dataset;
+* will not prune by a blank, negative or malformed retention count, which sanoid reads as 0 or as the wrong number;
+* checks every setting that pruning reads before it destroys anything, so a configuration error never leaves a prune
+  run half done;
+* exits non-zero when a snapshot could not be taken, so a failed unit shows as failed;
+* keeps taking snapshots when some are dated ahead of the clock, after a clock that ran ahead or while one runs
+  behind, and never lets such a snapshot take the place of one the retention keeps;
+* computes preferred times with the system's time zone database, so changes to and from summer time neither skip nor
+  double snapshots;
+* locks with link:https://man7.org/linux/man-pages/man2/flock.2.html[flock(2)], and reads the command line with Python's `argparse`.
+
+pysanoid does not include syncoid, findoid, or sanoid's Nagios checks (`--monitor-snapshots`, `--monitor-health`,
+`--monitor-capacity`). See <<why-no-syncoid>> for why.
+
+link:DEVIATIONS.md[DEVIATIONS.md] lists every place pysanoid differs, and every place where matching sanoid needed a
+note, with sanoid's behaviour, pysanoid's, the reason and the evidence.
+
+[[audit]]
+== The Audit
+
+pysanoid has been audited against sanoid six times. The first, of the port module by module, was finished on
+22 September 2026, and the sixth on 25 October 2026, followed by a review of sanoid's newest reports on 28 October. Each audit compared the two by running sanoid's own Perl, at the pinned commit, beside pysanoid on the same input, rather
+than by reading the code alone. link:AUDIT.md[AUDIT.md] records every audit: what it checked, what it found, and
+what was fixed.
+
+The audits found three kinds of problem.
+
+=== Bugs in the Port
+
+Some found places where the port had drifted from sanoid by accident. Each was fixed to do what sanoid does, with a
+test that fails before the fix and passes after it. Among them:
+
+* The dataset cache was loaded lazily, where sanoid loads it eagerly. This was the bug with the most effect, since it
+  was live on every production run.
+* When the snapshot cache was missing, adding to it built a new cache of the new snapshots alone. Every other type
+  then looked overdue, was taken again, and the extra snapshots used up retention.
+* How a recursive section and a template were merged depended on the order of the sections, so a child's own
+  `process_children_only` or `recursive = zfs` could be lost.
+* A blank `prune_defer` turned off the pool capacity check instead of failing.
+
+=== Bugs in sanoid
+
+Others found places where sanoid itself acts on a configuration in a way that can destroy snapshots it means to
+keep, or can stop taking snapshots without saying so. pysanoid deviates from sanoid in those places, and only in
+those. Each is listed in link:DEVIATIONS.md[DEVIATIONS.md], with the evidence from running sanoid's Perl and the
+tests that cover it. <<differences>> summarizes them.
+
+=== What sanoid's Users Reported
+
+sanoid's users have met many of the same problems on real pools. One audit read every issue and pull request in
+sanoid's repository, 1,061 as of 26 September 2026, and checked each one about the code pysanoid ports against
+pysanoid. Where users had reported a bug that pysanoid shared, because it does what sanoid does, pysanoid now carries
+a fix. Some of those bugs have since been fixed in sanoid, and some are still open there:
+
+[cols="2,4"]
+|===
+| sanoid reports | What pysanoid does
+
+| {sanoid}/issues/1021[#1021]
+| A dataset's section placed above the recursive section it belongs under is refused. In sanoid, it is silently
+replaced by the parent's settings.
+
+| {sanoid}/issues/702[#702], {sanoid}/issues/938[#938], {sanoid}/issues/1038[#1038], {sanoid}/pull/1039[#1039]
+| A `use_template` that names no template is an error, not a run on the defaults.
+
+| {sanoid}/issues/834[#834], {sanoid}/issues/901[#901], {sanoid}/issues/952[#952]
+| Every value is trimmed, and a repeated key reads as its first value. sanoid has fixed this for the cases these
+users met. pysanoid covers the places it did not reach.
+
+| {sanoid}/issues/671[#671], {sanoid}/issues/394[#394], {sanoid}/issues/440[#440]
+| A snapshot that could not be taken makes the run exit non-zero, and a bad value costs only its own type.
+
+| {sanoid}/issues/1030[#1030], {sanoid}/issues/1116[#1116]
+| A hook that outlives `script_timeout` is stopped, and the run carries on.
+
+| {sanoid}/issues/1063[#1063], {sanoid}/issues/790[#790], {sanoid}/issues/391[#391], {sanoid}/issues/534[#534]
+| Runs lock with flock(2), and a cache that cannot be written never stops a run.
+
+| {sanoid}/issues/155[#155], {sanoid}/issues/395[#395], {sanoid}/issues/406[#406], {sanoid}/issues/409[#409]
+| Preferred times come from the system's time zone database, so changes to and from summer time are handled.
+
+| {sanoid}/issues/1119[#1119]
+| A snapshot dated more than five minutes ahead of the clock is set aside, so it neither stops snapshots of its type
+nor takes the place of one the retention keeps.
+|===
+
+pysanoid also follows sanoid at a commit on its main line, not at its 2.3.0 release, so it carries the eight fixes
+merged into sanoid after 2.3.0. Bugs in 2.3.0 itself, such as the duplicate snapshots under `recursive = zfs` fixed by
+{sanoid}/pull/1023[#1023], do not reach pysanoid.
+
+AUDIT.md's section "What upstream's users reported" lists every report, and advice for running pysanoid drawn from
+them.
+
+[[testing]]
+== Testing pysanoid
+
+pysanoid has been tested in three ways:
+
+* `test_pysanoid.py` and `test_pysanoid_alert.py` are pytest suites. To run them, as an ordinary user:
++
+[source,shell]
+----
+% python3 -m pytest test_pysanoid.py test_pysanoid_alert.py
+----
+* `dev/` compares pysanoid with sanoid's own Perl, run side by side on the same input: whole runs, each part of a
+  run, and thousands of generated cases. It needs Perl with Capture::Tiny, and two CPAN modules that
+  `dev/fetch_cpan.py` fetches itself. See link:dev/README.md[dev/README.md].
+* link:AUDIT.md[AUDIT.md] records how the port was checked, what each check found, and what was fixed.
+
+The tests and the comparison with sanoid run on macOS under Python 3.11 and 3.14. pysanoid is written to run on
+FreeBSD and on Linux distributions other than TrueNAS's, but has not yet been tried there.
+
+[[files]]
+== Files
+
+[cols="2,3"]
+|===
+| File | What it is
+
+| `pysanoid.py` | the program
+| `sanoid.defaults.conf` | sanoid's defaults, as sanoid ships them (comments aside)
+| `sanoid.conf` | an example configuration
+| `pysanoid.service`, `pysanoid-prune.service`, `pysanoid.timer` | systemd units, after sanoid's Debian packaging
+| `pysanoid_alert.py`, `pysanoid-alert@.service` | failure mail and a freshness check, for TrueNAS
+| `HANDBOOK.adoc` | this handbook
+| `DEVIATIONS.md` | every difference from sanoid, and why
+| `AUDIT.md` | how the port was checked
+| `dev/` | the comparison with sanoid's Perl
+|===
+
+[[licence]]
+== Licence
+
+pysanoid is licensed under the GNU General Public License v3.0, as sanoid is; see link:LICENSE[LICENSE]. sanoid is
+the work of Jim Salter and its contributors, and pysanoid's behaviour is theirs, ported to Python and modified where
+<<differences>> and link:DEVIATIONS.md[DEVIATIONS.md] say. pysanoid is an independent port, not affiliated with or
+endorsed by the sanoid project. The copy of sanoid's script in `dev/upstream/` is sanoid's own, unmodified and under
+its own licence, and is there only for the comparison; see link:dev/upstream/PROVENANCE.md[its note].
+
+[[further-resources]]
+== Further Resources
+
+* link:{sanoid}[sanoid], the project pysanoid ports, and its
+  link:{sanoid}/wiki[wiki].
+* The OpenZFS manual pages: link:{openzfs-man}/8/zfs-snapshot.8.html[zfs-snapshot(8)],
+  link:{openzfs-man}/8/zfs-destroy.8.html[zfs-destroy(8)], link:{openzfs-man}/8/zfs-list.8.html[zfs-list(8)],
+  link:{openzfs-man}/8/zpool-list.8.html[zpool-list(8)], link:{openzfs-man}/8/zpool-export.8.html[zpool-export(8)]
+  and link:{openzfs-man}/8/zpool-import.8.html[zpool-import(8)].
+* The systemd manual pages: link:{systemd-man}/systemd.timer.html[systemd.timer(5)],
+  link:{systemd-man}/systemd.service.html[systemd.service(5)] and link:{systemd-man}/journalctl.html[journalctl(1)].
+* The link:https://openzfs.github.io/openzfs-docs/[OpenZFS documentation].
+* The link:https://docs.freebsd.org/en/books/handbook/zfs/[FreeBSD Handbook's chapter on ZFS], whose style this
+  handbook follows.
+
+[[terminology]]
+== Terminology
+
+[[term-snapshot]]snapshot::
+A read-only copy of a dataset at one instant. See link:{openzfs-man}/8/zfs-snapshot.8.html[zfs-snapshot(8)].
+
+[[term-type]]snapshot type::
+One of `frequently`, `hourly`, `daily`, `weekly`, `monthly` and `yearly`. A snapshot's type is the last part of its
+name: `autosnap_2026-11-03_00:01:12_daily` is a daily.
+
+[[term-retention-count]]retention count::
+The number of snapshots of a type that a dataset keeps, such as `daily = 7`. See <<retention>>.
+
+[[term-preferred-time]]preferred time::
+The time of day, week, month or year at which a type is due, such as 23:59 for a daily. A type is taken at the first
+run after it. See <<preferred-times>>.
+
+[[term-section]]section::
+The part of `sanoid.conf` that names a dataset, such as `[tank/home]`, and holds its settings.
+
+[[term-template]]template::
+A section named `template_<name>`, whose settings other sections share through `use_template`. See
+<<sections-and-templates>>.
+
+[[term-recursion]]recursion::
+Extending a section's settings to the datasets below it, with `recursive = yes` or `recursive = zfs`. See
+<<recursion>>.
+
+[[term-prune-defer]]prune_defer::
+A pool capacity, as a percentage, below which a dataset's snapshots are not pruned. See <<prune-defer>>.
+
+[[term-hook]]hook::
+A command a section runs around taking or destroying its snapshots. See <<hooks>>.
+
+[[term-autosnap]]autosnap_ name::
+The name pysanoid and sanoid give every snapshot they take: `autosnap_`, the date and time, and the type. When that
+name is already taken, as it can be in the repeated hour at the end of summer time, the snapshot is taken again with
+`dst` before the type, such as `autosnap_2026-10-25_01:00:00dst_hourly`.
+
+[[term-cache]]snapshot cache::
+A list of the pool's snapshots that pysanoid keeps in `/var/cache/sanoid`, so that most runs need not list every
+snapshot from zfs. `--force-update` reads them from zfs instead; `--cache-ttl` sets how long the cache is used.

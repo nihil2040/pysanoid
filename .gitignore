@@ -1,0 +1,13 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+
+# Editors and the OS
+.claude/
+.vscode/
+.idea/
+.DS_Store

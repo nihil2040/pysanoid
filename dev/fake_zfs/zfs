@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Fake `zfs` for differential testing. Logs every invocation's argv (one JSON array per line) to
+$FAKE_ZFS_LOG; reads canned dataset/snapshot state from $FAKE_ZFS_STATE (JSON: {"datasets": [...],
+"snapshots": [{"ds": ..., "line": "<tab-separated zfs get output line>"}], "fail_all": bool,
+"snapshot_fail": {"<full@name>": {"stderr": "...", "rc": 1}}, "destroy_fail": {"<full@name>": {...}},
+"snapshot_fail_dataset": ["<dataset path, no @name>", ...], "get_killed": bool, "retry_cut": int, "list_killed": bool,
+"list_fails_partway": bool, "list_prints": int, "list_cut": int, "get_sleep": seconds, "noise": "<hex>"}).
+
+Understands the four subcommands the ported code actually issues:
+  zfs get -Hrpt snapshot creation [dataset ...]   -- with names, each is checked to exist (a
+      missing one complains on stderr and makes the exit status 1, matching a real `zfs get` on an
+      unknown dataset); with none, every known snapshot line is printed. A dataset named twice, or
+      inside another named one, is listed once, as zfs lists it. With "get_killed", a `zfs get`
+      naming datasets prints its first line and dies from SIGKILL, as one the OOM killer stops would.
+      With "retry_cut", a `zfs get` naming none prints its listing less that many bytes and dies the
+      same way, as one killed before its last buffer is written out. With "get_sleep", it takes that
+      long first, as a pool with many snapshots does.
+  zfs list -o name -t filesystem,volume -Hr <fs> [<fs> ...]  -- each fs prints itself then its
+      descendants (dataset-path-prefix match); a missing one complains on stderr, rc 1. With
+      "list_killed" it prints its first "list_prints" lines (default 1) and dies from SIGKILL; with
+      "list_fails_partway" it prints them and exits 1, as a listing that fails after its parent would.
+      With "list_cut" it prints that many bytes of its listing and dies from SIGKILL, inside a line.
+  zfs snapshot [-r] <full@name>  -- succeeds (exit 0, silent) unless <full@name> is a key in
+      "snapshot_fail" (which write that entry's stderr and exit with its rc, default 1 -- e.g.
+      {"stderr": "cannot create snapshot 'x': dataset already exists\\n"} to drive the dst_ retry
+      path in take_snapshots/take-snapshots), OR the dataset part of <full@name> is listed in
+      "snapshot_fail_dataset" (generic default message/rc -- for failing every attempt against a
+      dataset regardless of the timestamp-based snapshot name a real subprocess actually generates,
+      which a caller outside this process can't predict exactly; see dev/e2e_subprocess.py). An
+      entry's "stderr_hex" gives its complaint as bytes, which needn't be UTF-8.
+  zfs destroy <full@name>  -- succeeds unless <full@name> is a key in "destroy_fail", same shape.
+With "noise", a snapshot or destroy first writes those bytes to stderr, whether it then works or fails:
+a warning, which needn't be UTF-8. With "noise_out" it also writes those bytes to stdout, before the stderr
+noise, or after it with "noise_err_first". In either, `{name}` stands for the snapshot the command acts on.
+Anything else exits 2 (deliberately not "handled": if a diff_*.py needs a new zfs subcommand, add
+it here explicitly rather than have this fake silently succeed at something it doesn't model).
+"""
+import json
+import os
+import signal
+import sys
+import time
+
+args = sys.argv[1:]
+with open(os.environ["FAKE_ZFS_LOG"], "a") as f:
+    f.write(json.dumps(args) + "\n")
+
+with open(os.environ["FAKE_ZFS_STATE"]) as f:
+    st = json.load(f)
+if st.get("fail_all"):
+    sys.stderr.write("internal error: failed to initialize ZFS library\n")
+    sys.exit(1)
+datasets, snaps = st.get("datasets", []), st.get("snapshots", [])
+
+if args[:1] == ["get"]:
+    names, rc, picked = args[4:], 0, []
+    if not names:
+        picked = snaps
+    else:
+        for n in names:
+            if n not in datasets:
+                sys.stderr.write(f"cannot open '{n}': dataset does not exist\n")
+                rc = 1
+                continue
+            picked += [s for s in snaps if s.get("ds") is not None and (s["ds"] == n or s["ds"].startswith(n + "/"))]
+    picked = list({id(s): s for s in picked}.values())
+    time.sleep(float(st.get("get_sleep", 0)))
+    if names and st.get("get_killed"):
+        sys.stdout.write("".join(s["line"] + "\n" for s in picked[:1]))
+        sys.stdout.flush()
+        os.kill(os.getpid(), signal.SIGKILL)
+    if not names and st.get("retry_cut"):
+        whole = "".join(s["line"] + "\n" for s in picked)
+        sys.stdout.write(whole[:max(0, len(whole) - st["retry_cut"])])
+        sys.stdout.flush()
+        os.kill(os.getpid(), signal.SIGKILL)
+    for s in picked:
+        sys.stdout.write(s["line"] + "\n")
+    sys.exit(rc)
+
+if args[:1] == ["list"]:
+    names, rc, out = args[6:], 0, []
+    for n in names:
+        if n not in datasets:
+            sys.stderr.write(f"cannot open '{n}': dataset does not exist\n")
+            rc = 1
+            continue
+        out += [d for d in datasets if d == n or d.startswith(n + "/")]
+    if names and st.get("list_cut") is not None:
+        sys.stdout.write("".join(d + "\n" for d in out)[:st["list_cut"]])
+        sys.stdout.flush()
+        os.kill(os.getpid(), signal.SIGKILL)
+    if names and (st.get("list_killed") or st.get("list_fails_partway")):
+        sys.stdout.write("".join(d + "\n" for d in out[:st.get("list_prints", 1)]))
+        sys.stdout.flush()
+        if st.get("list_killed"):
+            os.kill(os.getpid(), signal.SIGKILL)
+        sys.exit(1)
+    for d in out:
+        sys.stdout.write(d + "\n")
+    sys.exit(rc if names else (0 if out else 1))
+
+
+def complain(fail: dict, default: str) -> None:
+    os.write(2, bytes.fromhex(fail["stderr_hex"]) if "stderr_hex" in fail else fail.get("stderr", default).encode())
+
+
+if args[:1] in (["snapshot"], ["destroy"]):
+    noise = [(fd, bytes.fromhex(st.get(key, "")).replace(b"{name}", os.fsencode(args[-1])))
+             for fd, key in ((1, "noise_out"), (2, "noise"))]
+    for fd, data in reversed(noise) if st.get("noise_err_first") else noise:
+        if data:
+            os.write(fd, data)
+
+if args[:1] == ["snapshot"]:
+    name = args[-1]
+    fail = st.get("snapshot_fail", {}).get(name)
+    if not fail and name.split("@", 1)[0] in st.get("snapshot_fail_dataset", []):
+        fail = {}  # dataset-prefix match, generic default message/rc below
+    if fail is not None:
+        complain(fail, f"cannot create snapshot '{name}': unknown error\n")
+        sys.exit(fail.get("rc", 1))
+    sys.exit(0)
+
+if args[:1] == ["destroy"]:
+    name = args[-1]
+    fail = st.get("destroy_fail", {}).get(name)
+    if fail:
+        complain(fail, f"cannot destroy '{name}': unknown error\n")
+        sys.exit(fail.get("rc", 1))
+    sys.exit(0)
+
+sys.exit(2)

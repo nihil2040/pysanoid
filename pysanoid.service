@@ -1,0 +1,14 @@
+[Unit]
+Description=Snapshot ZFS Pool
+Requires=zfs.target
+After=zfs.target
+Wants=pysanoid-prune.service
+Before=pysanoid-prune.service
+ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
+OnFailure=pysanoid-alert@%n.service
+
+[Service]
+Environment=TZ=UTC
+Type=oneshot
+TimeoutStartSec=30min
+ExecStart=/usr/local/sbin/pysanoid.py --take-snapshots --verbose

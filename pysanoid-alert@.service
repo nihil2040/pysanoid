@@ -1,0 +1,8 @@
+[Unit]
+Description=Mail the failure of %i
+After=middlewared.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=10min
+ExecStart=/usr/local/sbin/pysanoid_alert.py failure %i

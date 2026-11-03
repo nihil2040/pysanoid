@@ -1,0 +1,8 @@
+# Third-party CPAN sources, fetched on demand by fetch_cpan.py -- not vendored (see its docstring).
+.cpan_cache/
+
+# Scratch directories each diff_*.py creates and cleans up after itself; only survives a crash.
+work/
+
+__pycache__/
+*.pyc
