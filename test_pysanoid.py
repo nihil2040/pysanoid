@@ -2028,7 +2028,10 @@ def test_a_hook_that_a_nul_byte_stops_from_starting_counts_as_failed(script, env
     # like a hook that can't start (a failed fork): -1, which vetoes a prune, instead of a traceback mid-run
     cfg = {"pre_pruning_script": script, "script_timeout": "5"}
     assert ps.run_hook_script(cfg, "pre_pruning_script", "tank/b", env) == -1
-    assert capsys.readouterr().err == f"could not run '{script}': embedded null byte\nWARN: pre_pruning_script failed, -1\n"
+    # why is Python's own words, which differ: 3.14 on Linux starts the hook with posix_spawn, and says "posix_spawn:
+    # embedded null character in path" where other versions say "embedded null byte"
+    assert re.fullmatch(rf"could not run '{re.escape(script)}': .*embedded null (byte|character).*\n"
+                        r"WARN: pre_pruning_script failed, -1\n", capsys.readouterr().err)
     assert "SANOID_TARGETS" not in os.environ
 
 
