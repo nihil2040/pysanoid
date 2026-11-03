@@ -572,7 +572,9 @@ differently, and some of those cases destroy snapshots that pysanoid keeps.
 [[differences]]
 == Differences from sanoid
 
-pysanoid follows sanoid at commit link:{sanoid-pin}[`d39b51a`], the v2.3.0 line. The rule is to match sanoid one for
+pysanoid follows sanoid at commit link:{sanoid-pin}[`d39b51a`] on sanoid's main branch, dated 5 June 2026. That
+commit's script still calls itself 2.3.0, but it comes after the 2.3.0 release and includes the eight fixes merged
+since. The rule is to match sanoid one for
 one, unless matching it has a plausible path to losing snapshots that the configuration means to keep. In short,
 pysanoid:
 
@@ -666,9 +668,9 @@ users met. pysanoid covers the places it did not reach.
 nor takes the place of one the retention keeps.
 |===
 
-pysanoid also follows sanoid at a commit on its main line, not at its 2.3.0 release, so it carries the eight fixes
-merged into sanoid after 2.3.0. Bugs in 2.3.0 itself, such as the duplicate snapshots under `recursive = zfs` fixed by
-{sanoid}/pull/1023[#1023], do not reach pysanoid.
+Because the commit pysanoid follows comes after sanoid's 2.3.0 release (see <<differences>>), bugs in 2.3.0 itself
+that were fixed before it, such as the duplicate snapshots under `recursive = zfs` fixed by {sanoid}/pull/1023[#1023],
+do not reach pysanoid.
 
 AUDIT.md's section "What upstream's users reported" lists these reports and the others it read in full, with advice
 for running pysanoid drawn from them.
