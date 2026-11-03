@@ -32,7 +32,8 @@ pysanoid was written with three goals in mind:
   plausible path to destroying a snapshot that the configuration means to keep. A configuration that sanoid would
   load and then act on wrongly is refused instead.
 * *One file, any system with ZFS:* pysanoid is a single file that needs Python 3.11 or later and nothing outside its
-  standard library. It runs on TrueNAS, where packages cannot be installed, and on any other system with OpenZFS.
+  standard library. It runs on TrueNAS, where packages cannot be installed, and is written to run on any other
+  system with OpenZFS.
 
 The terms this handbook uses, such as <<term-type,snapshot type>> and <<term-retention-count,retention count>>, are
 described in <<terminology>>.
@@ -427,7 +428,8 @@ To see how pysanoid has merged the configuration's sections, templates and defau
 # pysanoid.py --debug
 ----
 
-Each setting is listed with where its value came from, followed by every dataset's settings as pysanoid will use them.
+Each value a template or a section overrides is listed with where it came from, followed by every dataset's settings
+as pysanoid will use them.
 
 === Exit Status
 
@@ -438,12 +440,13 @@ wrong is written to standard error, so a failed run shows as a failed unit in sy
 [[truenas]]
 == pysanoid on TrueNAS
 
-TrueNAS has run pysanoid in production since August 2026, on TrueNAS SCALE 25.10.x with Python 3.11. TrueNAS needs
-three things that other systems do not.
+pysanoid's author has run it on a TrueNAS SCALE 25.10.x system, with Python 3.11, since August 2026. On TrueNAS,
+pysanoid has to live on a pool, can mail its failures through TrueNAS's own mail settings, and has to be kept clear
+of TrueNAS's own snapshot tasks.
 
 === Keeping pysanoid on a Pool
 
-A TrueNAS update replaces the system's own files, `/usr/local/sbin` and `/etc/systemd/system` among them. Keep
+A TrueNAS update replaces the system's own files, and with them anything installed alongside them. Keep
 `pysanoid.py`, `sanoid.conf` and `sanoid.defaults.conf` in a directory on a pool instead, and edit both services to
 use it:
 
@@ -464,8 +467,8 @@ configured type has a recent snapshot. It works only on TrueNAS.
 
 === TrueNAS's Own Snapshot and Replication Tasks
 
-TrueNAS takes and prunes its own snapshots with zettarepl, driven by Periodic Snapshot Tasks. zettarepl manages every
-snapshot whose name parses under an enabled task's naming schema.
+TrueNAS takes and prunes its own snapshots with zettarepl, driven by Periodic Snapshot Tasks. A task's retention
+applies to the snapshots of its datasets whose names parse under its naming schema.
 
 [WARNING]
 ====
@@ -594,10 +597,11 @@ note, with sanoid's behaviour, pysanoid's, the reason and the evidence.
 [[audit]]
 == The Audit
 
-pysanoid has been audited against sanoid six times. The first, of the port module by module, was finished on
-22 September 2026, and the sixth on 25 October 2026, followed by a review of sanoid's newest reports on 28 October. Each audit compared the two by running sanoid's own Perl, at the pinned commit, beside pysanoid on the same input, rather
-than by reading the code alone. link:AUDIT.md[AUDIT.md] records every audit: what it checked, what it found, and
-what was fixed.
+pysanoid has been audited six times. The first, of the port module by module, was finished on 22 September 2026, and
+the sixth on 25 October 2026, followed by a review of sanoid's newest reports on 28 October. Five of the audits
+compared pysanoid with sanoid by running sanoid's own Perl, at the pinned commit, beside pysanoid on the same input,
+rather than by reading the code alone. The fourth looked at security and data safety. link:AUDIT.md[AUDIT.md] records
+every audit: what it checked, what it found, and what was fixed.
 
 The audits found three kinds of problem.
 
@@ -607,7 +611,7 @@ Some found places where the port had drifted from sanoid by accident. Each was f
 test that fails before the fix and passes after it. Among them:
 
 * The dataset cache was loaded lazily, where sanoid loads it eagerly. This was the bug with the most effect, since it
-  was live on every production run.
+  was live on every run on the author's system.
 * When the snapshot cache was missing, adding to it built a new cache of the new snapshots alone. Every other type
   then looked overdue, was taken again, and the extra snapshots used up retention.
 * How a recursive section and a template were merged depended on the order of the sections, so a child's own
@@ -617,16 +621,18 @@ test that fails before the fix and passes after it. Among them:
 === Bugs in sanoid
 
 Others found places where sanoid itself acts on a configuration in a way that can destroy snapshots it means to
-keep, or can stop taking snapshots without saying so. pysanoid deviates from sanoid in those places, and only in
-those. Each is listed in link:DEVIATIONS.md[DEVIATIONS.md], with the evidence from running sanoid's Perl and the
-tests that cover it. <<differences>> summarizes them.
+keep, or can stop taking snapshots without saying so. pysanoid deviates from sanoid in those places. Each is listed
+in link:DEVIATIONS.md[DEVIATIONS.md], with the evidence from running sanoid's Perl and the tests that cover it.
+DEVIATIONS.md also lists the few differences that lose nothing, such as locking with flock(2), and says why each is
+harmless. <<differences>> summarizes them.
 
 === What sanoid's Users Reported
 
 sanoid's users have met many of the same problems on real pools. One audit read every issue and pull request in
 sanoid's repository, 1,061 as of 26 September 2026, and checked each one about the code pysanoid ports against
-pysanoid. Where users had reported a bug that pysanoid shared, because it does what sanoid does, pysanoid now carries
-a fix. Some of those bugs have since been fixed in sanoid, and some are still open there:
+pysanoid. Most of the bugs they reported were ones pysanoid had already fixed. One, #1021, pysanoid still shared, and
+it was fixed in 0.1.37. The review of 28 October took up two newer reports, #1116 and #1119. Some of these bugs have
+since been fixed in sanoid, and some are still open there:
 
 [cols="2,4"]
 |===
@@ -664,8 +670,8 @@ pysanoid also follows sanoid at a commit on its main line, not at its 2.3.0 rele
 merged into sanoid after 2.3.0. Bugs in 2.3.0 itself, such as the duplicate snapshots under `recursive = zfs` fixed by
 {sanoid}/pull/1023[#1023], do not reach pysanoid.
 
-AUDIT.md's section "What upstream's users reported" lists every report, and advice for running pysanoid drawn from
-them.
+AUDIT.md's section "What upstream's users reported" lists these reports and the others it read in full, with advice
+for running pysanoid drawn from them.
 
 [[testing]]
 == Testing pysanoid
@@ -683,8 +689,9 @@ pysanoid has been tested in three ways:
   `dev/fetch_cpan.py` fetches itself. See link:dev/README.md[dev/README.md].
 * link:AUDIT.md[AUDIT.md] records how the port was checked, what each check found, and what was fixed.
 
-The tests and the comparison with sanoid run on macOS under Python 3.11 and 3.14. pysanoid is written to run on
-FreeBSD and on Linux distributions other than TrueNAS's, but has not yet been tried there.
+The tests and the comparison with sanoid run on macOS under Python 3.11 and 3.14, and GitHub Actions runs the tests
+on Linux under both versions for every push. pysanoid is written to run on FreeBSD and on Linux distributions other
+than TrueNAS's, but has not yet been run on a real pool there.
 
 [[files]]
 == Files
@@ -701,7 +708,10 @@ FreeBSD and on Linux distributions other than TrueNAS's, but has not yet been tr
 | `HANDBOOK.adoc` | this handbook
 | `DEVIATIONS.md` | every difference from sanoid, and why
 | `AUDIT.md` | how the port was checked
+| `test_pysanoid.py`, `test_pysanoid_alert.py` | the tests
 | `dev/` | the comparison with sanoid's Perl
+| `SECURITY.md`, `CONTRIBUTING.md` | how to report a serious bug, and what a change needs
+| `.github/workflows/ci.yml` | the tests and ruff, run by GitHub Actions
 |===
 
 [[licence]]
