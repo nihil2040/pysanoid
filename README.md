@@ -4,6 +4,10 @@ pysanoid takes and prunes ZFS snapshots by policy. It is a Python port of [sanoi
 the snapshot tool Jim Salter wrote and maintains with its contributors. It reads sanoid's own configuration files,
 names its snapshots as sanoid does, and decides what to take and what to destroy as sanoid does.
 
+> **Published as-is.** pysanoid is a personal project, shared in case it is useful. It comes with no support and no
+> promise of fixes or replies, and is used at your own risk. Forks are welcome: the GPL lets you change it and publish
+> your own version. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 - **sanoid's files and names, unchanged:** an existing `sanoid.conf` loads as it is, and a pool can move between
   pysanoid and Perl sanoid at any time.
 - **Never destroy what the configuration keeps:** pysanoid follows sanoid one for one, except where following it

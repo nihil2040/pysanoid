@@ -1,59 +1,37 @@
 # Contributing to pysanoid
 
-Thank you for helping. pysanoid destroys snapshots for a living, so it changes slowly and every change is checked.
-This page says what a change needs before it can be merged.
+pysanoid is a personal project, published as-is so that others can use it. It is not run as a community project:
+issues and pull requests may be read and taken up, or not, whenever its maintainer gets to them. There is no promise
+of a reply, a review or a fix.
 
-## The rule
+**Forking is encouraged.** pysanoid is licensed under the GNU General Public License v3.0, so you may fork it, change
+it and publish your own version, as long as your version stays under the same licence. You don't need to ask.
 
-pysanoid matches sanoid one for one, unless matching it has a plausible path to losing snapshots that the
-configuration means to keep. So:
+## If you send a change anyway
 
-- **A difference from sanoid that loses nothing is a bug in pysanoid.** The fix makes pysanoid do what sanoid does.
-- **A deliberate difference needs a reason that involves data.** It gets an entry in [DEVIATIONS.md](DEVIATIONS.md),
-  with sanoid's behaviour, pysanoid's, why, the evidence (ideally sanoid's Perl run on the same input), the tests,
-  and any sanoid issues behind it. The code marks it with the entry's ID, as `# DEV-NNN: one line`.
-- **No new features that sanoid doesn't have,** unless they are off by default and an existing `sanoid.conf` behaves
-  exactly as before. Open an issue first to talk it over.
+A change is more likely to be taken up if it follows the project's rule and comes with its tests.
 
-pysanoid needs Python 3.11 or later and nothing outside the standard library. Please keep it that way.
+**The rule:** pysanoid matches sanoid one for one, unless matching it has a plausible path to losing snapshots that
+the configuration means to keep.
 
-## Before you open a pull request
+- A difference from sanoid that loses nothing is a bug in pysanoid, and the fix makes pysanoid do what sanoid does.
+- A deliberate difference needs a reason that involves data, and an entry in [DEVIATIONS.md](DEVIATIONS.md) with
+  sanoid's behaviour, pysanoid's, why, and the evidence. The code marks it with the entry's ID, as `# DEV-NNN: ...`.
+- pysanoid needs Python 3.11 or later and nothing outside the standard library.
 
-Run the tests and the linter from the repository's root:
+**The checks:** run these from the repository's root:
 
 ```sh
 python3 -m pytest test_pysanoid.py test_pysanoid_alert.py
 ruff check .
 ```
 
-The tests need only pytest. They include a check that every test name, file, `dev/` path and DEV ID the documentation
-cites exists, so a rename has to update the docs too.
+If the change touches what a run takes, destroys, prints or exits with, also run `python3 dev/run.py`, which compares
+pysanoid with sanoid's own Perl; [dev/README.md](dev/README.md) says what it needs.
 
-If your change touches what a run takes, destroys, prints or exits with, also run the comparison with sanoid's Perl:
-
-```sh
-python3 dev/run.py
-```
-
-It needs Perl with Capture::Tiny; [dev/README.md](dev/README.md) says how to set it up and what each target checks.
-
-## What a change should include
-
-- **A test that fails before the change and passes after it.** For a bug, the test reproduces it.
-- **The documentation it affects:** [HANDBOOK.adoc](HANDBOOK.adoc) for anything a user sees, DEVIATIONS.md for a
-  difference from sanoid, and a dated line in [AUDIT.md](AUDIT.md)'s timeline for a fix.
-- **A version bump** in `VERSION` in `pysanoid.py`, for a change to what pysanoid does.
-
-Commit messages start with what they change, such as `pysanoid 0.1.54: ...` for a release, or `pysanoid: ...` for
-the tests, `dev/` or the docs.
-
-## Reporting bugs
-
-Open an issue with pysanoid's version, the operating system, the `sanoid.conf` involved and the output of the run
-with `--readonly --verbose`. A bug that could destroy snapshots should be reported privately instead; see
-[SECURITY.md](SECURITY.md).
+A change should come with a test that fails before it and passes after it, and should update
+[HANDBOOK.adoc](HANDBOOK.adoc) for anything a user sees.
 
 ## Licence
 
-pysanoid is licensed under the GNU General Public License v3.0. By contributing, you agree that your contribution is
-licensed under the same terms.
+By contributing, you agree that your contribution is licensed under the GNU General Public License v3.0.
