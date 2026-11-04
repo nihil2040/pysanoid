@@ -347,7 +347,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     _ = failure.add_argument("unit")
     freshness = commands.add_parser("freshness", parents=[common],
                                     help="mail when a snapshot type pysanoid takes has no recent snapshot")
-    _ = freshness.add_argument("--configdir", default="/etc/sanoid")
+    _ = freshness.add_argument("--configdir", default="/etc/pysanoid")
     return p.parse_args(argv)
 
 

@@ -35,8 +35,8 @@ Everything else is in **[HANDBOOK.adoc](HANDBOOK.adoc)**:
 
 ```sh
 sudo install -m 755 pysanoid.py /usr/local/sbin/pysanoid.py
-sudo mkdir -p /etc/sanoid
-sudo install -m 644 sanoid.defaults.conf sanoid.conf /etc/sanoid/   # then edit sanoid.conf for your pools
+sudo mkdir -p /etc/pysanoid
+sudo install -m 644 sanoid.defaults.conf sanoid.conf /etc/pysanoid/   # then edit sanoid.conf for your pools
 sudo /usr/local/sbin/pysanoid.py --cron --readonly --verbose        # shows what it would do, changes nothing
 ```
 

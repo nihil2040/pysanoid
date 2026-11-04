@@ -3248,11 +3248,20 @@ def test_arguments_that_are_not_options_are_refused():
 def test_the_production_command_lines_parse_as_upstream_would():
     take = ps.parse_args(["--configdir=/usr/local/etc/sanoid", "--take-snapshots", "--verbose"])
     assert (take.configdir, take.take_snapshots, take.prune_snapshots, take.cron, take.verbose) == ("/usr/local/etc/sanoid", True, False, False, True)
-    assert (take.cache_dir, take.run_dir) == ("/var/cache/sanoid", "/var/run/sanoid")
+    assert (take.cache_dir, take.run_dir) == ("/var/cache/pysanoid", "/var/run/pysanoid")
     prune = ps.parse_args(["--configdir=/usr/local/etc/sanoid", "--prune-snapshots", "--verbose"])
     assert (prune.take_snapshots, prune.prune_snapshots, prune.cron) == (False, True, False)
     default = ps.parse_args(["--configdir", "/x", "--cache-dir", "/y", "--run-dir", "/z"])
     assert (default.cron, default.verbose) == (True, True)
+
+
+def test_pysanoid_uses_its_own_directories_by_default():
+    # DEV-052: not upstream's, so a port beside Perl sanoid never reads or overwrites sanoid's config, caches or locks
+    args = ps.parse_args([])
+    assert (args.configdir, args.cache_dir, args.run_dir) == (
+        "/etc/pysanoid", "/var/cache/pysanoid", "/var/run/pysanoid")
+    for unit in ("pysanoid.service", "pysanoid-prune.service"):
+        assert "ConditionFileNotEmpty=/etc/pysanoid/sanoid.conf\n" in (REPO_ROOT / unit).read_text()
 
 
 def test_stdout_passes_non_utf8_bytes_through_instead_of_ending_the_run(tmp_path, monkeypatch):

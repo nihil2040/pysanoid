@@ -16,7 +16,7 @@ the configuration means to keep.
 
 - A difference from sanoid that loses nothing is a bug in pysanoid, and the fix makes pysanoid do what sanoid does.
 - A deliberate difference needs a reason that involves data, and an entry in [DEVIATIONS.md](DEVIATIONS.md) with
-  sanoid's behaviour, pysanoid's, why, and the evidence. The code marks it with the entry's ID, as `# DEV-NNN: ...`.
+  sanoid's behaviour, pysanoid's why, and the evidence. The code marks it with the entry's ID, as `# DEV-NNN: ...`.
 - pysanoid needs Python 3.11 or later and nothing outside the standard library.
 
 **The checks:** run these from the repository's root:

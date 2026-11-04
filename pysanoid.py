@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     # what RawIOBase.write takes, under whichever Python the type checker targets
     from _typeshed import ReadableBuffer
 
-VERSION = "0.1.53"
+VERSION = "0.1.54"
 MINIMUM_DEFAULTS_VERSION = 2
 
 # One section's resolved options: str from the ini, bool for TOGGLE_KEYS and the initialized and zfs_recursion
@@ -309,14 +309,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     DEV-022: argparse in place of Getopt::Long; Getopt::Long's odd spellings are usage errors here.
     DEV-023: arguments that are not options are refused; upstream ignores them.
     DEV-024: an empty directory option is refused (_path_arg).
-    DEV-026: --monitor-* is not implemented."""
+    DEV-026: --monitor-* is not implemented.
+    DEV-052: the config, cache and lock directories default to pysanoid's own, not upstream's."""
     p = argparse.ArgumentParser(
         prog="pysanoid",
         description="ZFS snapshot management (Python port of sanoid)",
     )
-    p.add_argument("--configdir", default="/etc/sanoid", type=_path_arg)
-    p.add_argument("--cache-dir", default="/var/cache/sanoid", type=_path_arg)
-    p.add_argument("--run-dir", default="/var/run/sanoid", type=_path_arg)
+    p.add_argument("--configdir", default="/etc/pysanoid", type=_path_arg)
+    p.add_argument("--cache-dir", default="/var/cache/pysanoid", type=_path_arg)
+    p.add_argument("--run-dir", default="/var/run/pysanoid", type=_path_arg)
 
     p.add_argument("--cron", action="store_true")
     p.add_argument("--verbose", action="store_true")
@@ -664,7 +665,7 @@ class ZfsClient:
 def load_config(configdir: str | Path, zfs: ZfsClient) -> dict[str, SectionConfig]:
     """sanoid.conf and sanoid.defaults.conf merged, recursion applied, into one entry per dataset, as upstream's init
     builds them, with its --debug trace when zfs.debug is set."""
-    # spelled as upstream builds them for its messages: `--configdir=/etc/sanoid/` gives "/etc/sanoid//sanoid.conf"
+    # spelled as upstream builds them for its messages: `--configdir=/etc/pysanoid/` gives "/etc/pysanoid//sanoid.conf"
     conf_file = f"{configdir}/sanoid.conf"
     default_conf_file = f"{configdir}/sanoid.defaults.conf"
 

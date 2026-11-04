@@ -538,6 +538,20 @@ upstream reports where there are any, and where it lives in the code and the tes
   `test_a_negative_cache_ttl_is_an_error_message_not_a_traceback`
 - **Harness:** `dev/e2e_subprocess.py` `test_negative_cache_ttl_is_a_clean_fatal`
 
+### DEV-052: The config, cache and lock directories are pysanoid's own
+
+- **Upstream:** `--configdir`, `--cache-dir` and `--run-dir` default to `/etc/sanoid`, `/var/cache/sanoid` and
+  `/var/run/sanoid`.
+- **pysanoid:** they default to `/etc/pysanoid`, `/var/cache/pysanoid` and `/var/run/pysanoid`. `pysanoid_alert.py`'s
+  freshness check reads `/etc/pysanoid` too, and both systemd units check `/etc/pysanoid/sanoid.conf`. The files and
+  their format are unchanged: an existing `sanoid.conf` copied from `/etc/sanoid` loads as it did. A first run with
+  no cache in `/var/cache/pysanoid` reads every snapshot from zfs, as any run without a cache does (DEV-039c).
+- **Why:** harmless. A port installed beside Perl sanoid never reads or overwrites sanoid's configuration, caches or
+  lock files.
+- **Code:** `parse_args`
+- **Tests:** `test_pysanoid_uses_its_own_directories_by_default`
+- **Harness:** `dev/diff_options.py` reads the three defaults as this entry, not as differences
+
 ### P12: The command line reads as upstream's GetOptions call reads it
 
 - **Upstream:** Getopt::Long reads `--cache-ttl` as `=i`: an optional sign, then digits with underscores anywhere

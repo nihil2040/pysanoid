@@ -4,7 +4,7 @@ Requires=zfs.target
 After=zfs.target
 Wants=pysanoid-prune.service
 Before=pysanoid-prune.service
-ConditionFileNotEmpty=/etc/sanoid/sanoid.conf
+ConditionFileNotEmpty=/etc/pysanoid/sanoid.conf
 OnFailure=pysanoid-alert@%n.service
 
 [Service]

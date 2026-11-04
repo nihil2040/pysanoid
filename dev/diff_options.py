@@ -42,6 +42,9 @@ FLAGS = ["verbose", "debug", "cron", "readonly", "quiet", "force-update", "take-
 MONITOR = ["monitor-health", "monitor-snapshots", "monitor-capacity"]
 VALUED = ["configdir", "cache-dir", "run-dir"]
 ALL_OPT_NAMES = FLAGS + MONITOR + VALUED + ["cache-ttl"]
+DEV_052_DEFAULTS = [("configdir", "/etc/sanoid", "/etc/pysanoid"),
+                    ("cache-dir", "/var/cache/sanoid", "/var/cache/pysanoid"),
+                    ("run-dir", "/var/run/sanoid", "/var/run/pysanoid")]
 
 HEAD = PERL_JSON_HEAD + '''
 use Getopt::Long qw(:config auto_version auto_help);
@@ -132,6 +135,9 @@ def classify(a: dict, b: dict, argv: list[str]) -> str:
     if a["kind"] != "ok":
         return ""
     ea, eb = eff_perl(a), eff_py(b)
+    for opt, perl_default, py_default in DEV_052_DEFAULTS:  # pysanoid's own directories, DEV-052
+        if (ea[opt], eb[opt]) == (perl_default, py_default):
+            eb[opt] = ea[opt]
     diffs = [k for k in ea if (float(ea[k]) != float(eb[k]) if k == "cache-ttl" and ea[k] is not None and eb[k] is not None
                                 else ea[k] != eb[k])]
     return ("value differs: " + ",".join(diffs)) if diffs else ""
