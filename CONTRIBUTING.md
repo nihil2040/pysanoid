@@ -14,9 +14,11 @@ A change is more likely to be taken up if it follows the project's rule and come
 **The rule:** pysanoid matches sanoid one for one, unless matching it has a plausible path to losing snapshots that
 the configuration means to keep.
 
-- A difference from sanoid that loses nothing is a bug in pysanoid, and the fix makes pysanoid do what sanoid does.
-- A deliberate difference needs a reason that involves data, and an entry in [DEVIATIONS.md](DEVIATIONS.md) with
-  sanoid's behaviour, pysanoid's why, and the evidence. The code marks it with the entry's ID, as `# DEV-NNN: ...`.
+- A difference from sanoid that has no stated reason is a bug in pysanoid, and the fix makes pysanoid do what sanoid
+  does.
+- A deliberate difference needs a reason: a path to losing data, or, for one that is harmless, a reason such as scope
+  or keeping pysanoid's files apart from sanoid's. It needs an entry in [DEVIATIONS.md](DEVIATIONS.md) with sanoid's
+  behaviour, pysanoid's, why, and the evidence. The code marks it with the entry's ID, as `# DEV-NNN: ...`.
 - pysanoid needs Python 3.11 or later and nothing outside the standard library.
 
 **The checks:** run these from the repository's root:
