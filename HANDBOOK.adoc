@@ -163,7 +163,7 @@ INFO: deferring snapshot pruning (tank/backup)...
 
 The run would take a daily snapshot of each dataset, because the day's <<term-preferred-time,preferred time>> of
 23:59 has passed since the last one was taken. `tank/home/alice` is included because `recursive = yes` applies
-`tank/home`'s settings to every dataset under it. The run would also destroy the two oldest daily snapshots of
+the settings of `tank/home` to every dataset under it. The run would also destroy the two oldest daily snapshots of
 `tank/home` and `tank/home/alice`: each is more than seven days old, and at least seven newer ones remain.
 `tank/backup` keeps all of its snapshots because its pool is no more than 85% full (see <<prune-defer>>).
 
@@ -355,7 +355,7 @@ percentage. This suits a dataset whose snapshots should be kept for as long as t
 ----
 
 While `tank` is 85% full or less, a run reports `deferring snapshot pruning (tank/backup)...` and destroys none of
-`tank/backup`'s snapshots. Once usage exceeds 85%, they are pruned by their counts as usual. pysanoid reads the pool's capacity with `zpool list`; see link:{openzfs-man}/8/zpool-list.8.html[zpool-list(8)].
+the snapshots of `tank/backup`. Once usage exceeds 85%, they are pruned by their counts as usual. pysanoid reads the pool's capacity with `zpool list`; see link:{openzfs-man}/8/zpool-list.8.html[zpool-list(8)].
 
 [[hooks]]
 === Script Hooks
@@ -466,8 +466,9 @@ systemd unit show as failed.
 [[own-system]]
 == Where I run pysanoid
 
-My system has run pysanoid since August 2026. It is a TrueNAS appliance, so pysanoid has to live on a pool, mail its
-failures through the system's own mail settings, and coexist with the snapshot tasks in the TrueNAS web interface.
+My system has run pysanoid since August 2026. It is a TrueNAS appliance, so pysanoid has to live on a pool and mail
+its failures through the system's own mail settings. It replaces TrueNAS's Periodic Snapshot Tasks, which I don't
+use, for the reasons given in <<why-a-port>>.
 
 === Keeping pysanoid on a Pool
 
@@ -516,13 +517,14 @@ message instead of sending it.
 
 === The System's Own Snapshot Tasks
 
-A Periodic Snapshot Task prunes every snapshot, on the datasets it covers, whose name matches its naming schema.
+I use no Periodic Snapshot Tasks: pysanoid takes and prunes every snapshot on my pools. A task's policy stays with
+the appliance, and it keeps snapshots by age rather than by a count of each type (see <<why-a-port>>).
 
 [WARNING]
 ====
-Do not enable a Periodic Snapshot Task whose naming schema could match `autosnap_` names on a dataset that pysanoid
-manages. The task would prune pysanoid's snapshots by its own lifetime. Use one snapshot method per dataset, not
-both.
+A Periodic Snapshot Task prunes every snapshot, on the datasets it covers, whose name matches its naming schema. Do
+not enable a task whose naming schema could match `autosnap_` names on a dataset that pysanoid manages, or it will
+prune pysanoid's snapshots by its own lifetime.
 ====
 
 To replicate pysanoid's snapshots with a Replication Task, see <<why-no-syncoid>>.
