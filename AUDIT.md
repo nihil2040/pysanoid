@@ -79,7 +79,7 @@ cannot yet claim."
 | Tests | 20 | 225 | 993 |
 | ruff | (not tracked) | clean | clean (`pysanoid.py`/`test_pysanoid.py` and `dev/`, separately), since `0.1.44` with production's Python 3.11 as its target (`ruff.toml`) |
 | basedpyright | (not tracked) | 0 errors, 180 warnings | 0 errors, 144 warnings, since `0.1.45` also when it checks for Python 3.11 (`dev/` is a separate, explicitly not-gated-to-0 pool -- see `dev/README.md`) |
-| Python the gate runs on | (not tracked) | 3.14 | 3.14 and 3.11 (production's is 3.11.9; since `0.1.44` `pysanoid.py` needs 3.11 or later) |
+| Python the gate runs on | (not tracked) | 3.14 | 3.11 only, since 2026-11-04 (3.14 and 3.11 before; production's is 3.11.9; since `0.1.44` `pysanoid.py` needs 3.11 or later) |
 | `dev/run.py` targets | (scratch only) | (scratch only) | 21, 42 runs with `--fuzz`; three of them, since 2026-10-11, judge pysanoid by what its config promises, two, since 2026-10-25, run upstream's whole script beside it (`zfs_output` its words, `whole_run` what it does), and one, since 2026-10-26, runs two pysanoids at once (`overlap`); `dev/mutants.py` checks the targets, the tests and five harnesses with 229 breaks |
 
 The `0.1.19` → `0.1.21` growth is not new audit modules -- it's two more real bugs found while
@@ -1420,7 +1420,7 @@ while the machine was off, and a pool filling up. Where the plan stands:
    glibc reads, which the tests and `dev/e2e_subprocess.py` check; and that no run outlives its unit's
    timeout, which nothing has tested.
 2. Test the promises, not the parity: done as far as one machine and a stand-in zfs go.
-3. Python in production: the gate runs under 3.11 as well as the newest. TrueNAS 26's Python is still to come.
+3. Python in production: the gate runs under 3.11, production's, and since 2026-11-04 under 3.11 only. TrueNAS 26's Python is still to come.
 4. The production setup: `pysanoid_alert.py` and its units were installed in production on 2026-10-11. Whether a mail of
    each kind has been seen to arrive is not recorded here.
 5. The Perl comparison: as planned. The three new targets have no known class that permits a difference

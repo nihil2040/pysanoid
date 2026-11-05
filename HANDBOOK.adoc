@@ -32,8 +32,7 @@ pysanoid was written with three goals in mind:
   plausible path to destroying a snapshot that the configuration means to keep. A configuration that sanoid would
   load and then act on wrongly is refused instead.
 * *One file, any system with ZFS:* pysanoid is a single file that needs Python 3.11 or later and nothing outside its
-  standard library. Today it runs on my TrueNAS system, where packages cannot be installed. pysanoid can plausibly be
-run on any UNIX-like system with OpenZFS and python installed.
+standard library. pysanoid can plausibly be run on any UNIX-like system with OpenZFS and python installed.
 
 The terms this handbook uses, such as <<term-type,snapshot type>> and <<term-retention-count,retention count>>, are
 described in <<terminology>>.
@@ -43,25 +42,35 @@ toc::[]
 [preface]
 == Why a Port
 
-Today pysanoid runs on a TrueNAS appliance, and the appliance doesn't fit the my needs:
+Today pysanoid runs on a TrueNAS appliance, and the appliance doesn't fit my needs:
 
 * *Its snapshot policy stays behind.* A Periodic Snapshot Task's schedule, naming and lifetime live in the
   appliance's configuration database, not on the pool. Import the pool elsewhere, and nothing there knows how to keep
   its snapshots.
-* *It can't manage existing sanoid snapshots from an imported pool.* Its tasks keep snapshots by age, not by a count
+* *It can't manage existing snapshots from an imported pool.* Its tasks keep snapshots by age, not by a count
   of each type, and only those whose names match a task's schema. Bent to fit years of existing sanoid snapshots,
   they pruned unpredictably or not at all.
 * *sanoid can't be installed on it.* sanoid is Perl and needs CPAN modules. The appliance doesn't support installing
   packages, and each update replaces the system's files.
 
-sanoid's model is the right one: the policy is a text file that goes with the pool, retention is a count of each type,
-and a snapshot's name carries everything needed to decide whether to keep it. pysanoid keeps that model in a single
-Python file with no dependencies, so it runs on the appliance and on any other system with OpenZFS, and a pool can go
-back to Perl sanoid at any time.
+sanoid's model is the right one for me, and portability is important: the policy is a text file that goes with the pool,
+retention is a count of each type,and a snapshot's name carries everything needed to decide whether to keep it.
+pysanoid keeps that model in a single Python file with no dependencies, and a pool can go back to Perl sanoid at any time.
+
+=== A Pool That Moves
+
+OpenZFS keeps a pool's on-disk format portable between the systems that run it, among them Linux, FreeBSD, illumos
+and macOS, as long as each supports every feature the pool uses; see the OpenZFS documentation's
+link:https://openzfs.github.io/openzfs-docs/Basic%20Concepts/Feature%20Flags.html[Feature Flags]. A pool moves with
+`zpool export` and `zpool import`, and its `compatibility` property keeps it from taking on features another system
+lacks.
+
+My pool has moved this way: I managed it under Debian and RHEL before TrueNAS, and I want its snapshot policy to move
+with it.
 
 === Why No syncoid
 
-The sanoid repository also ships syncoid, findoid and findbay. They are separate programs, not part of the sanoid
+The sanoid repository also ships syncoid, findoid and findbay. These are separate programs, not part of the sanoid
 script, so pysanoid doesn't port them. syncoid, sanoid's replication tool, works with pysanoid's snapshots as it does
 with sanoid's, since the names are the same. On the appliance, a Replication Task sends them instead: give it one
 schema for each type under "Also include naming schema", such as `autosnap_%Y-%m-%d_%H:%M:%S_daily`.
@@ -93,7 +102,8 @@ repository:
 # install -m 644 sanoid.conf /etc/pysanoid/
 ----
 
-`sanoid.defaults.conf` holds the default of every setting and is never edited. `sanoid.conf` is the example
+`sanoid.defaults.conf` holds the default of every setting; see <<sections-and-templates>> for changing one.
+`sanoid.conf` is the example
 configuration from the repository. Edit it to name the datasets of the system's own pools, as described in
 <<configuration>>.
 
@@ -216,9 +226,9 @@ A section named `template_<name>` holds settings that other sections share. A se
 `use_template = <name>`. A section's own settings win over its templates', and its templates' win over the
 defaults. Templates are usually placed below the sections that use them.
 
-To change a default for every section, add a [template_default] section to sanoid.conf, as the
-header of sanoid.defaults.conf says. Leave sanoid.defaults.conf as it ships: it is also the list
-of settings pysanoid accepts, and installing a newer copy undoes any edit made to it.
+To change a default for every section, add a `[template_default]` section to `sanoid.conf`, as the header of
+`sanoid.defaults.conf` says. Leave `sanoid.defaults.conf` as it ships: it is also the list of settings pysanoid
+accepts, and installing a newer copy undoes any edit made to it.
 
 [NOTE]
 ====
@@ -438,8 +448,8 @@ units and timers included. Reinstall the units after each update, or run pysanoi
 interface instead.
 
 For an appliance like TrueNAS, keep `pysanoid.py`, `pysanoid_alert.py`, `sanoid.conf` and `sanoid.defaults.conf`
-together in a directory on a pool instead, and edit all three services to use it. In `pysanoid.service`, and
-likewise in `pysanoid-prune.service` with `--prune-snapshots`:
+together in a directory on a pool instead, where they travel with it (see <<a-pool-that-moves>>), and edit all three
+services to use it. In `pysanoid.service`, and likewise in `pysanoid-prune.service` with `--prune-snapshots`:
 
 [source,ini]
 ----
@@ -516,7 +526,7 @@ Some places had drifted from sanoid by accident. Each was fixed to do what sanoi
 the fix and passes after it. Among them:
 
 * The dataset cache was loaded lazily, where sanoid loads it eagerly. This was the bug with the most effect, since it
-  was live on every run on the my system.
+  was live on every run on my system.
 * When the snapshot cache was missing, adding to it built a new cache of the new snapshots alone. Every other type
   then looked overdue, was taken again, and the extra snapshots used up retention.
 * How a recursive section and a template were merged depended on the order of the sections, so a child's own
@@ -586,8 +596,8 @@ pysanoid is tested in two ways:
   run, and thousands of generated cases. It needs Perl with Capture::Tiny, and two CPAN modules that
   `dev/fetch_cpan.py` fetches itself. See link:dev/README.md[dev/README.md].
 
-The tests and the comparison with sanoid run on macOS under Python 3.11 and 3.14, and GitHub Actions runs the tests
-on Linux under both versions for every push. pysanoid is written to run on FreeBSD and on Linux distributions other
+The tests and the comparison with sanoid run on macOS under Python 3.11, and GitHub Actions runs the tests on Linux
+under Python 3.11 for every push. pysanoid is written to run on FreeBSD and on Linux distributions other
 than my own, but has not yet been run on a real pool there.
 
 [[files]]
@@ -601,7 +611,7 @@ than my own, but has not yet been run on a real pool there.
 | `sanoid.defaults.conf` | sanoid's defaults, as sanoid ships them (comments aside)
 | `sanoid.conf` | an example configuration
 | `pysanoid.service`, `pysanoid-prune.service`, `pysanoid.timer` | systemd units, after sanoid's Debian packaging
-| `pysanoid_alert.py`, `pysanoid-alert@.service` | failure mail and a freshness check, for the my own system
+| `pysanoid_alert.py`, `pysanoid-alert@.service` | failure mail and a freshness check, for my own system
 | `HANDBOOK.adoc` | this handbook
 | `DEVIATIONS.md` | every difference from sanoid, and why
 | `AUDIT.md` | how the port was checked

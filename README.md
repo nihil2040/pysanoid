@@ -27,7 +27,7 @@ Everything else is in **[HANDBOOK.adoc](HANDBOOK.adoc)**:
 - [Quick Start Guide](HANDBOOK.adoc#quick-start): installing, a first read-only run, and the systemd units
 - [Configuration](HANDBOOK.adoc#configuration): sections, templates, retention counts, preferred times, recursion,
   `prune_defer` and script hooks
-- [pysanoid on the Author's Own System](HANDBOOK.adoc#own-system)
+- [Where I run pysanoid](HANDBOOK.adoc#own-system)
 - [Differences from sanoid](HANDBOOK.adoc#differences), [The Audit](HANDBOOK.adoc#audit),
   [Testing](HANDBOOK.adoc#testing) and [Terminology](HANDBOOK.adoc#terminology)
 

@@ -1,7 +1,7 @@
 # Contributing to pysanoid
 
 pysanoid is a personal project, published as-is so that others can use it. It is not run as a community project:
-issues and pull requests may be read and taken up, or not, whenever its maintainer gets to them. There is no promise
+issues and pull requests may be read and taken up, or not, whenever I get to them. There is no promise
 of a reply, a review or a fix.
 
 **Forking is encouraged.** pysanoid is licensed under the GNU General Public License v3.0, so you may fork it, change
@@ -24,11 +24,11 @@ the configuration means to keep.
 **The checks:** run these from the repository's root:
 
 ```sh
-python3 -m pytest test_pysanoid.py test_pysanoid_alert.py
+python3.11 -m pytest test_pysanoid.py test_pysanoid_alert.py
 ruff check .
 ```
 
-If the change touches what a run takes, destroys, prints or exits with, also run `python3 dev/run.py`, which compares
+If the change touches what a run takes, destroys, prints or exits with, also run `python3.11 dev/run.py`, which compares
 pysanoid with sanoid's own Perl; [dev/README.md](dev/README.md) says what it needs.
 
 A change should come with a test that fails before it and passes after it, and should update

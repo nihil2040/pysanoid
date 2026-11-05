@@ -37,10 +37,9 @@ python3 dev/run.py dataset_cache    # just one target -- see `python3 dev/run.py
 python3 dev/diff_dataset_cache.py fuzz 2000 7   # a target's own script directly: n, seed
 ```
 
-Every target runs pysanoid under the interpreter that runs it, so `python3.11 dev/run.py --fuzz` checks
-the port under production's Python (3.11), as `python3.11 dev/e2e_subprocess.py` and, with pytest
-importable there, `python3.11 -m pytest test_pysanoid.py` do. Run the gate under both: through Python 3.13,
-pathlib's `exists()` and `is_file()` raise where 3.14 returns False, a difference only the older version shows.
+Every target runs pysanoid under the interpreter that runs it. The gate runs under Python 3.11 only,
+production's: `python3.11 dev/run.py --fuzz`, `python3.11 dev/e2e_subprocess.py` and, with pytest
+importable there, `python3.11 -m pytest test_pysanoid.py`.
 
 Requires only system Perl (`Getopt::Long`, `Pod::Usage`, `JSON::PP`, `Data::Dumper`, `File::Copy`,
 `File::Path`, `Time::Local` are core modules, already present on any normal Perl install) -- except
