@@ -65,6 +65,7 @@ below before deciding how to describe it to anyone else.
 | 2026-10-27 | `0.1.51` changes no behavior. `pysanoid.py`'s comments are cut to a summary and the ID of the entry in `DEVIATIONS.md` that explains them, which gains twelve parity notes (P10 to P21) for what the comments had held alone. A `README.md` says what pysanoid is and why it was ported. The project names no host: the production config and units move out of it, the repo ships an example `sanoid.conf` and units after upstream's Debian packaging, and the dev targets that ran the production config run a fixture of the same shape (`dev/fixtures/sanoid.conf`) |
 | 2026-10-28 | A review of the comments against the code corrects eight of them, with no code change. `0.1.52` reads the capacity answer's trailing whitespace as Perl's `\s`, so a no-break space or a control character after `85%` is more than a capacity and refused (DEV-016), where `str.strip()` had trimmed it and a whole run pruned 3 of 5 dailies `prune_defer = 50` was holding back. It also drops a `ZeroDivisionError` from take's planning that nothing raises any more. See "The 2026-10-28 review" |
 | 2026-10-28 | `0.1.52` deployed to production. Upstream's issues and pull requests since the history pass hold two about the code pysanoid ports. #1116, a hook's timeout killing sanoid itself, is DEV-042, and gains a test of its exact case. #1119, a host whose clock ran 127 years ahead and took nothing for four days, reopens #651 with what the September decision didn't weigh: once the clock is set right, a snapshot dated ahead fills one of prune's places, so prune destroys a real snapshot the count keeps. `0.1.53` sets aside every snapshot dated more than five minutes ahead (DEV-051, P16 retired), which also keeps snapshots coming while a clock runs behind. See "The 2026-10-28 review" |
+| 2026-11-04 | `0.1.54`: `--configdir`, `--cache-dir` and `--run-dir` default to `/etc/pysanoid`, `/var/cache/pysanoid` and `/var/run/pysanoid`, so pysanoid installed beside Perl sanoid never reads or overwrites sanoid's files (DEV-052). `pysanoid_alert.py` and the units follow, and `dev/diff_options.py` reads the three defaults as DEV-052 |
 
 The whole project, start to now, spans **28 calendar days**. The systematic audit itself
 ran across parts of 2 days. This is a young codebase by any measure — see "What this
@@ -72,11 +73,11 @@ cannot yet claim."
 
 ## Growth
 
-| | Before (`0.1.9`) | After the 8-module audit (`0.1.19`) | Current (`0.1.53`) |
+| | Before (`0.1.9`) | After the 8-module audit (`0.1.19`) | Current (`0.1.54`) |
 |---|---|---|---|
-| `pysanoid.py` | 1,553 lines | 2,075 lines | 2,178 lines (comments trimmed at `0.1.22` and `0.1.51`; the register moved to `DEVIATIONS.md` at `0.1.46`) |
-| `test_pysanoid.py` | 435 lines | 1,833 lines | 5,987 lines |
-| Tests | 20 | 225 | 993 |
+| `pysanoid.py` | 1,553 lines | 2,075 lines | 2,182 lines (comments trimmed at `0.1.22` and `0.1.51`; the register moved to `DEVIATIONS.md` at `0.1.46`) |
+| `test_pysanoid.py` | 435 lines | 1,833 lines | 6,001 lines |
+| Tests | 20 | 225 | 994 |
 | ruff | (not tracked) | clean | clean (`pysanoid.py`/`test_pysanoid.py` and `dev/`, separately), since `0.1.44` with production's Python 3.11 as its target (`ruff.toml`) |
 | basedpyright | (not tracked) | 0 errors, 180 warnings | 0 errors, 144 warnings, since `0.1.45` also when it checks for Python 3.11 (`dev/` is a separate, explicitly not-gated-to-0 pool -- see `dev/README.md`) |
 | Python the gate runs on | (not tracked) | 3.14 | 3.11 only, since 2026-11-04 (3.14 and 3.11 before; production's is 3.11.9; since `0.1.44` `pysanoid.py` needs 3.11 or later) |
@@ -86,7 +87,7 @@ The `0.1.19` → `0.1.21` growth is not new audit modules -- it's two more real 
 building the `dev/` differential-testing tool below (see "Update, 2026-09-22" under Recommendation).
 `0.1.22` adds one more parity fix, `0.1.23` to `0.1.36` the fixes from the second-pass re-audit,
 `0.1.37` the one from the upstream history pass, `0.1.38` the leads left after them, `0.1.39` `$TZ` read as
-glibc reads it, `0.1.40` the three fixes of the third audit, `0.1.41` two more of its findings, `0.1.42` the last two, and `0.1.43` the two differences `0.1.42` had found in where zfs's own words are shown (see "What was actually wrong, and got fixed"). `0.1.44` renames a constant for the linter and adds no test, `0.1.45` gives a failed hook's warning upstream's words, `0.1.46` moves the register to `DEVIATIONS.md` and changes no behavior, `0.1.47` to `0.1.50` come from the fourth to sixth audits, `0.1.51` cuts the comments and changes no behavior, `0.1.52` reads the capacity answer's whitespace as Perl's `\s`, and `0.1.53` sets aside snapshots dated ahead of the clock. `pysanoid.py`'s comments were trimmed on 2026-09-24 (no
+glibc reads it, `0.1.40` the three fixes of the third audit, `0.1.41` two more of its findings, `0.1.42` the last two, and `0.1.43` the two differences `0.1.42` had found in where zfs's own words are shown (see "What was actually wrong, and got fixed"). `0.1.44` renames a constant for the linter and adds no test, `0.1.45` gives a failed hook's warning upstream's words, `0.1.46` moves the register to `DEVIATIONS.md` and changes no behavior, `0.1.47` to `0.1.50` come from the fourth to sixth audits, `0.1.51` cuts the comments and changes no behavior, `0.1.52` reads the capacity answer's whitespace as Perl's `\s`, `0.1.53` sets aside snapshots dated ahead of the clock, and `0.1.54` gives pysanoid its own config, cache and lock directories. `pysanoid.py`'s comments were trimmed on 2026-09-24 (no
 code change); `0.1.27`'s port of Perl's number reading is most of its growth since.
 
 Test growth by step (each number is the actual count immediately before/after that
@@ -128,6 +129,7 @@ commit, taken from the commit messages themselves):
 969 -> 982 (0.1.52, whitespace Perl's \s doesn't match after a capacity)
 982 -> 984 (the documentation's references checked)
 984 -> 993 (0.1.53, snapshots dated ahead of the clock set aside; a pre hook that times out)
+993 -> 994 (0.1.54, the config, cache and lock directories are pysanoid's own)
 ```
 
 ## Methodology: what was actually tested, and why

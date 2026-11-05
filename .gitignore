@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 
+# The local virtual environment
+.venv/
+
 # Tool caches
 .pytest_cache/
 .ruff_cache/
