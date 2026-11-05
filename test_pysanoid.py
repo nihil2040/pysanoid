@@ -1641,9 +1641,9 @@ def test_main_prunes_by_zfs_when_the_snapshot_cache_holds_a_nul_byte(tmp_path, m
     assert destroyed == ["tank/b@autosnap_d5_daily", "tank/b@autosnap_d4_daily", "tank/b@autosnap_d3_daily"]
 
 
-def _pathlib_as_through_3_13(monkeypatch) -> None:
-    """Path.exists(), is_file() and is_symlink() raising PermissionError for every path, as they do through Python 3.13
-    for a path under a directory that can't be searched (3.14 returns False)."""
+def _pathlib_as_on_3_11(monkeypatch) -> None:
+    """Path.exists(), is_file() and is_symlink() raising PermissionError for every path, as Python 3.11's do for a
+    path under a directory that can't be searched."""
     def refuse(self: Path, *_: object, **__: object) -> bool:
         raise PermissionError(errno.EACCES, "Permission denied", str(self))
 
@@ -1652,16 +1652,16 @@ def _pathlib_as_through_3_13(monkeypatch) -> None:
 
 
 def test_main_never_asks_pathlib_whether_a_file_is_there(tmp_path, monkeypatch):
-    # Upstream's -e and -f read false where pathlib's checks raise through Python 3.13: on 3.11, a cache directory
-    # pysanoid couldn't search stopped the run with a traceback, nothing taken or pruned, where 3.14 carried on as
-    # DEV-039a says (confirmed end to end). Two --cron runs pass every check: the caches missing, then fresh.
+    # Upstream's -e and -f read false where Python 3.11's pathlib checks raise: a cache directory pysanoid couldn't
+    # search stopped the run with a traceback, nothing taken or pruned, instead of carrying on as DEV-039a says
+    # (confirmed end to end). Two --cron runs pass every check: the caches missing, then fresh.
     confdir = write_confdir(tmp_path, "[tank/data]\n    daily = 3\n    hourly = 0\n    monthly = 0\n")
     now = int(time.time())
     taken, destroyed = _fake_zfs_pool(monkeypatch, [f"tank/data@autosnap_d{i}_daily\tcreation\t{now - int(age * 86400)}\t-"
                                                     for i, age in enumerate((2.5, 3.5, 4.5, 5.5))])
     monkeypatch.setenv("PATH", "/usr/bin:/bin")  # main() appends to PATH; setenv makes pytest restore it
     monkeypatch.delenv("TZ", raising=False)  # the zone read from /etc/localtime, not named in $TZ
-    _pathlib_as_through_3_13(monkeypatch)
+    _pathlib_as_on_3_11(monkeypatch)
     argv = ["--configdir", str(confdir), "--cache-dir", str(tmp_path / "cache"), "--run-dir", str(tmp_path / "run"), "--cron"]
     assert ps.main(argv) == 0
     assert ps.main(argv) == 0
@@ -2028,9 +2028,8 @@ def test_a_hook_that_a_nul_byte_stops_from_starting_counts_as_failed(script, env
     # like a hook that can't start (a failed fork): -1, which vetoes a prune, instead of a traceback mid-run
     cfg = {"pre_pruning_script": script, "script_timeout": "5"}
     assert ps.run_hook_script(cfg, "pre_pruning_script", "tank/b", env) == -1
-    # why is Python's own words, which differ: 3.14 on Linux starts the hook with posix_spawn, and says "posix_spawn:
-    # embedded null character in path" where other versions say "embedded null byte"
-    assert re.fullmatch(rf"could not run '{re.escape(script)}': .*embedded null (byte|character).*\n"
+    # why is Python's own words: "embedded null byte"
+    assert re.fullmatch(rf"could not run '{re.escape(script)}': .*embedded null byte.*\n"
                         r"WARN: pre_pruning_script failed, -1\n", capsys.readouterr().err)
     assert "SANOID_TARGETS" not in os.environ
 
